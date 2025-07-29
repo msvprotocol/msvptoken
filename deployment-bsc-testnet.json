@@ -1,0 +1,10 @@
+{
+  "network": "BSC Testnet",
+  "contractAddress": "0x90D29a452e52982c9cEcD04B2ed788215Aa97ce3",
+  "deployer": "0xcd6f9715eAD50841929C5cda9ad78605AF71F1f2",
+  "lpWallet": "0xcd6f9715eAD50841929C5cda9ad78605AF71F1f2",
+  "marketingWallet": "0xcd6f9715eAD50841929C5cda9ad78605AF71F1f2",
+  "developmentWallet": "0xcd6f9715eAD50841929C5cda9ad78605AF71F1f2",
+  "deploymentTime": "2025-07-29T11:25:23.005Z",
+  "explorerUrl": "https://testnet.bscscan.com/address/0x90D29a452e52982c9cEcD04B2ed788215Aa97ce3"
+}

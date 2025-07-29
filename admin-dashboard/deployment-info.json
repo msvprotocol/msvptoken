@@ -1,0 +1,39 @@
+{
+    "contractAddress": "0x90D29a452e52982c9cEcD04B2ed788215Aa97ce3",
+    "deployer": "0xcd6f9715eAD50841929C5cda9ad78605AF71F1f2",
+    "lpWallet": "0xcd6f9715eAD50841929C5cda9ad78605AF71F1f2",
+    "marketingWallet": "0xcd6f9715eAD50841929C5cda9ad78605AF71F1f2",
+    "developmentWallet": "0xcd6f9715eAD50841929C5cda9ad78605AF71F1f2",
+    "deploymentTime": "2024-07-28T13:30:00Z",
+    "explorerUrl": "https://testnet.bscscan.com/address/0x90D29a452e52982c9cEcD04B2ed788215Aa97ce3",
+    "tokenName": "MetaSoilVerse",
+    "tokenSymbol": "MSV",
+    "totalSupply": "100000000000000000000000000000",
+    "network": "BSC Testnet",
+    "contractVersion": "2.0.0",
+    "features": [
+        "Integrated Token & Vesting",
+        "Automatic Unlocking",
+        "High Precision Calculations (1e18)",
+        "Gas Optimized Updates",
+        "Enhanced Balance Management",
+        "Comprehensive Tax System",
+        "Security Features",
+        "Admin Dashboard Integration"
+    ],
+    "taxConfiguration": {
+        "transferTaxRate": 50,
+        "lpContributionRate": 20,
+        "developmentRate": 15,
+        "marketingRate": 10,
+        "burnRate": 5,
+        "maxTaxRate": 100
+    },
+    "vestingConfiguration": {
+        "maxDuration": 365,
+        "minDuration": 30,
+        "validIntervals": [30, 60, 90, 120, 180],
+        "automaticStart": true,
+        "precision": "1e18"
+    }
+} 

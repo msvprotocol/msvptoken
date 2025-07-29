@@ -1,0 +1,51 @@
+{
+  "name": "msv-token-airdrop",
+  "version": "1.0.0",
+  "description": "MetaSoilVerse Token with Airdrop and Vesting Features",
+  "main": "index.js",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy": "hardhat run scripts/deploy.js",
+    "deploy:integrated": "hardhat run scripts/deploy-integrated.js",
+    "deploy:testnet": "hardhat run scripts/deploy.js --network testnet",
+    "deploy:testnet:integrated": "hardhat run scripts/deploy-integrated.js --network testnet",
+    "deploy:mainnet": "hardhat run scripts/deploy.js --network mainnet",
+    "deploy:mainnet:integrated": "hardhat run scripts/deploy-integrated.js --network mainnet",
+    "deploy:bsc-testnet": "hardhat run scripts/deploy-bsc-testnet.js --network bscTestnet",
+    "node": "hardhat node",
+    "clean": "hardhat clean",
+    "coverage": "hardhat coverage"
+  },
+  "keywords": [
+    "bep20",
+    "token",
+    "airdrop",
+    "vesting",
+    "hardhat"
+  ],
+  "author": "MetaSoilVerse Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "@nomicfoundation/hardhat-network-helpers": "^1.0.8",
+    "@nomicfoundation/hardhat-chai-matchers": "^2.0.2",
+    "@nomicfoundation/hardhat-ethers": "^3.0.4",
+    "@nomicfoundation/hardhat-verify": "^2.0.0",
+    "@typechain/ethers-v6": "^0.5.0",
+    "@typechain/hardhat": "^9.0.0",
+    "@types/chai": "^4.3.5",
+    "@types/mocha": "^10.0.1",
+    "chai": "^4.3.7",
+    "ethers": "^6.8.1",
+    "hardhat": "^2.19.1",
+    "hardhat-gas-reporter": "^1.0.9",
+    "solidity-coverage": "^0.8.5",
+    "typechain": "^8.3.1"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^4.9.3",
+    "csv-parser": "^3.0.0",
+    "dotenv": "^16.3.1"
+  }
+} 
