@@ -118,11 +118,6 @@ deployments/
 *.key
 private.txt
 
-# Test files that might contain sensitive data
-test-*.js
-*test*.js
-!test/
-!**/test/
 
 # Backup files
 *.bak
