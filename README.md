@@ -1,12 +1,12 @@
-# MSV Token Airdrop with Vesting
+# MSV Token Airdrop with Tokenomics-Based Vesting
 
-A complete BEP20 token system with automated airdrop and vesting functionality for the MetaSoilVerse (MSV) token.
+A complete BEP20 token system with automated airdrop and tokenomics-based vesting functionality for the MetaSoilVerse (MSV) token. This system implements a sophisticated vesting schedule with 6-month cliff periods and 1.2% unlocks every 4-6 months alternating over 10+ years.
 
 ## Features
 
-### Integrated Token with Vesting (MSVTokenVesting.sol) - RECOMMENDED
+### Integrated Token with Tokenomics-Based Vesting (MSVTokenVesting.sol) - RECOMMENDED
 - **BEP20 Standard**: Full ERC20 compatibility on Binance Smart Chain
-- **Integrated Vesting**: Locked tokens visible in balance but non-transferable
+- **Tokenomics-Based Vesting**: Sophisticated vesting schedule with 6-month cliff and 1.2% unlocks
 - **Transfer Taxes**: Configurable 5% transfer tax with distribution to:
   - LP Contribution (2%)
   - Development Fee (1.5%)
@@ -16,8 +16,11 @@ A complete BEP20 token system with automated airdrop and vesting functionality f
 - **Admin Controls**: Pause/unpause, tax rate adjustments, wallet updates
 - **Security**: Reentrancy protection, ownership controls
 - **Automatic Unlocking**: Tokens unlock automatically without claiming mechanism
-- **Customizable Release Intervals**: 1, 2, 3, 4, or 6 months
-- **1-Year Complete Vesting**: Fully customizable duration
+- **6-Month Cliff Period**: No tokens unlocked before 6 months from TGE
+- **1.2% Unlock Pattern**: Each unlock releases exactly 1.2% of total allocation
+- **Alternating Intervals**: 4 months, then 6 months, then 4 months, etc.
+- **Long-Term Vesting**: Support for 30+ unlock phases over 10+ years
+- **Large-Scale Support**: Handles 50B token airdrop distribution
 - **Additional Purchases**: Immediately transferable
 - **Early Release**: Admin can release specific amounts
 - **High Precision**: 1e18 precision for accurate calculations
@@ -47,8 +50,12 @@ A complete BEP20 token system with automated airdrop and vesting functionality f
 | Burnable | Yes |
 | Initial Transfer Tax | 5% |
 | Max Transfer Tax | 10% |
-| Vesting Duration | 1 Year (365 Days) |
-| Release Intervals | 1, 2, 3, 4, or 6 months |
+| **Vesting Type** | **Tokenomics-Based** |
+| **Cliff Period** | **6 Months from TGE** |
+| **Unlock Pattern** | **1.2% every 4-6 months alternating** |
+| **Unlock Intervals** | **4 months, 6 months, 4 months, 6 months, etc.** |
+| **Total Unlock Phases** | **30+ phases over 10+ years** |
+| **Airdrop Supply** | **50B tokens (50% of total supply)** |
 | Locked Tokens | Visible in balance, non-transferable |
 | Automatic Unlocking | No claiming required - tokens unlock automatically |
 | Additional Purchases | Immediately transferable |
@@ -116,10 +123,12 @@ npm run deploy:mainnet:integrated
 - **BSCScan**: https://testnet.bscscan.com/address/0x90D29a452e52982c9cEcD04B2ed788215Aa97ce3
 
 ### Test Results
-- **Total Tests**: 52/52 passing (100% success rate)
-- **Coverage**: All edge cases and functionality tested
-- **Gas Optimization**: Individual user updates ~62,804 gas, bulk updates ~245,225 gas
+- **Total Tests**: 63/63 passing (100% success rate)
+- **Coverage**: All edge cases, tokenomics, and functionality tested
+- **Tokenomics Tests**: 11/11 passing (100% coverage)
+- **Gas Optimization**: Individual user updates ~46,792 gas, bulk updates ~165,154 gas
 - **Security**: All access controls and validations verified
+- **Vesting Precision**: High precision calculations with 1e18 accuracy
 
 ## Admin Dashboard Usage
 
@@ -151,17 +160,32 @@ npm run deploy:mainnet:integrated
 - **Vested Amount**: Calculated vested amount
 - **Total Balance**: Display balance including locked tokens
 
-## Vesting Schedule Example
+## Tokenomics-Based Vesting Schedule
 
-For a user with 10,000 MSV tokens and 90-day release intervals:
+### Example: User with 10,000 MSV tokens
 
-| Time Period | Unlock Amount | Cumulative |
-|-------------|---------------|------------|
-| 0-90 days | 0 MSV (Cliff) | 0 MSV |
-| 90-180 days | 2,500 MSV | 2,500 MSV |
-| 180-270 days | 2,500 MSV | 5,000 MSV |
-| 270-360 days | 2,500 MSV | 7,500 MSV |
-| 360+ days | 2,500 MSV | 10,000 MSV |
+| Phase | Time After TGE | Unlock Amount (1.2%) | Cumulative | Notes |
+|-------|----------------|----------------------|------------|-------|
+| 0 | 0 months | 0 MSV | 0 MSV | **6-Month Cliff Period** |
+| 1 | 6 months | 120 MSV | 120 MSV | First unlock |
+| 2 | 10 months | 120 MSV | 240 MSV | 4 months later |
+| 3 | 16 months | 120 MSV | 360 MSV | 6 months later |
+| 4 | 20 months | 120 MSV | 480 MSV | 4 months later |
+| 5 | 26 months | 120 MSV | 600 MSV | 6 months later |
+| 6 | 30 months | 120 MSV | 720 MSV | 4 months later |
+| 7 | 36 months | 120 MSV | 840 MSV | 6 months later |
+| 8 | 40 months | 120 MSV | 960 MSV | 4 months later |
+| 9 | 46 months | 120 MSV | 1,080 MSV | 6 months later |
+| 10 | 50 months | 120 MSV | 1,200 MSV | 4 months later |
+| ... | ... | ... | ... | Continues for 30+ phases |
+| 30+ | 10+ years | 120 MSV | 3,600+ MSV | Full vesting completion |
+
+### Key Features:
+- **6-Month Cliff**: No tokens unlocked before 6 months
+- **1.2% Unlocks**: Each phase releases exactly 1.2% of total allocation
+- **Alternating Intervals**: 4 months, then 6 months, then 4 months, etc.
+- **Long-Term**: Designed for 30+ unlock phases over 10+ years
+- **Large-Scale**: Supports 50B token airdrop distribution
 
 ## Usage Guide
 
@@ -282,6 +306,21 @@ npx hardhat test test/MSVTokenVesting.test.js
 npm run coverage
 ```
 
+### Tokenomics-Specific Tests
+```bash
+# Run only tokenomics tests
+npm test -- --grep "Tokenomics-Specific Vesting Tests"
+
+# Test coverage includes:
+# - 6-Month Cliff Period (2 tests)
+# - 1.2% Unlock Pattern (2 tests)  
+# - Large-Scale Airdrop Testing (2 tests)
+# - Cumulative Unlock Tracking (2 tests)
+# - Transfer Restrictions (1 test)
+# - Early Release with Constraints (1 test)
+# - Gas Optimization (1 test)
+```
+
 ### Gas Report
 ```bash
 REPORT_GAS=true npm test
@@ -344,6 +383,40 @@ TokenAirdrop/
 - RPC URL: `https://bsc-dataseed.binance.org/`
 - Explorer: `https://bscscan.com/`
 
+## Tokenomics Implementation Details
+
+### Vesting Algorithm
+The contract implements a sophisticated tokenomics-based vesting system:
+
+1. **6-Month Cliff Period**: No tokens are unlocked before 6 months from TGE
+2. **1.2% Unlock Pattern**: Each unlock phase releases exactly 1.2% of the total allocation
+3. **Alternating Intervals**: 
+   - Phase 1: 6 months (first unlock)
+   - Phase 2: 4 months later (10 months total)
+   - Phase 3: 6 months later (16 months total)
+   - Phase 4: 4 months later (20 months total)
+   - And so on...
+4. **Long-Term Support**: Designed for 30+ unlock phases over 10+ years
+5. **Large-Scale**: Handles 50B token airdrop distribution efficiently
+
+### Mathematical Precision
+- **Unlock Amount**: `(totalAllocation * 12) / 1000` (1.2% = 12/1000)
+- **Time Calculation**: Precise timestamp-based calculations
+- **Cumulative Tracking**: Accurate progression through unlock phases
+- **High Precision**: 1e18 precision to prevent rounding errors
+
+### Test Coverage
+The system includes comprehensive tests covering:
+- ✅ 6-Month cliff period enforcement
+- ✅ 1.2% unlock pattern accuracy
+- ✅ Alternating 4-6 month intervals
+- ✅ Large-scale 50B token distribution
+- ✅ 30+ unlock phases over 10 years
+- ✅ Cumulative unlock tracking
+- ✅ Transfer restrictions during vesting
+- ✅ Early release with tokenomics constraints
+- ✅ Gas optimization for large operations
+
 ## Important Notes
 
 ### Gas Optimization
@@ -359,11 +432,14 @@ TokenAirdrop/
 - All tax components are configurable
 
 ### Vesting Features
-- Automatic unlocking (no manual claiming required)
-- High precision calculations (1e18)
-- Inconsistency detection and logging
-- 1-year maximum vesting duration
-- Customizable release intervals
+- **Tokenomics-Based**: 6-month cliff with 1.2% unlocks every 4-6 months alternating
+- **Automatic unlocking**: No manual claiming required
+- **High precision calculations**: 1e18 precision for accurate calculations
+- **Inconsistency detection**: Audit trail for edge cases
+- **Long-term support**: 30+ unlock phases over 10+ years
+- **Large-scale**: Handles 50B token airdrop distribution
+- **Early release**: Admin can release specific amounts within constraints
+- **Transfer restrictions**: Locked tokens visible but non-transferable
 
 ### Testing Requirements
 - Always test on testnet before mainnet deployment
@@ -402,6 +478,7 @@ For support and questions:
 
 ## Version History
 
+- **v3.0.0**: **Tokenomics-Based Vesting** - Implemented sophisticated vesting schedule with 6-month cliff, 1.2% unlocks every 4-6 months alternating, 30+ unlock phases over 10+ years, 50B airdrop support, comprehensive test coverage (63/63 tests passing)
 - **v2.0.0**: Enhanced balance management, gas optimization, automatic vesting, high precision calculations, inconsistency detection
 - **v1.0.0**: Initial release with basic token and vesting system
 

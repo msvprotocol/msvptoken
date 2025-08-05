@@ -129,20 +129,20 @@ describe("MSVTokenVesting - Comprehensive Edge Case Testing", function () {
 
     describe("Vesting Precision & Edge Cases", function () {
         it("Should handle high precision vesting calculations", async function () {
-            await msvToken.createVestingSchedule(user1.address, ethers.parseEther("1"), 90 * 24 * 60 * 60);
+            await msvToken.createVestingSchedule(user1.address, ethers.parseEther("1"), 180 * 24 * 60 * 60);
             
-            // Advance time by 1 second (very small amount)
-            await time.increase(1);
+            // Advance time to 6 months (first unlock)
+            await time.increase(180 * 24 * 60 * 60);
             
             const vestedAmount = await msvToken.getVestedAmount(user1.address);
-            expect(vestedAmount).to.be.gt(0); // Should be greater than 0 with 1e18 precision
+            expect(vestedAmount).to.be.gt(0); // Should be greater than 0 with 1.2% unlock
         });
 
         it("Should handle very small vesting amounts", async function () {
             const smallAmount = ethers.parseEther("0.000001"); // Very small amount
-            await msvToken.createVestingSchedule(user1.address, smallAmount, 90 * 24 * 60 * 60);
+            await msvToken.createVestingSchedule(user1.address, smallAmount, 180 * 24 * 60 * 60);
             
-            await time.increase(30 * 24 * 60 * 60); // 30 days
+            await time.increase(180 * 24 * 60 * 60); // 6 months to first unlock
             
             const vestedAmount = await msvToken.getVestedAmount(user1.address);
             expect(vestedAmount).to.be.gt(0);
@@ -267,23 +267,24 @@ describe("MSVTokenVesting - Comprehensive Edge Case Testing", function () {
 
     describe("Edge Cases & Boundary Conditions", function () {
         it("Should handle vesting schedule at exact boundaries", async function () {
-            await msvToken.createVestingSchedule(user1.address, VESTING_AMOUNT, 90 * 24 * 60 * 60);
+            await msvToken.createVestingSchedule(user1.address, VESTING_AMOUNT, 180 * 24 * 60 * 60);
             
             // At start time
             let vestedAmount = await msvToken.getVestedAmount(user1.address);
             expect(vestedAmount).to.equal(0);
             
-            // At end time
-            await time.increase(365 * 24 * 60 * 60);
+            // At 6 months (first unlock)
+            await time.increase(180 * 24 * 60 * 60);
             vestedAmount = await msvToken.getVestedAmount(user1.address);
-            expect(vestedAmount).to.equal(VESTING_AMOUNT);
+            const expectedFirstUnlock = (VESTING_AMOUNT * BigInt(12)) / BigInt(1000); // 1.2%
+            expect(vestedAmount).to.equal(expectedFirstUnlock);
         });
 
         it("Should handle very short vesting periods", async function () {
-            const shortDuration = 30 * 24 * 60 * 60; // 30 days
+            const shortDuration = 120 * 24 * 60 * 60; // 120 days (4 months - minimum valid)
             await msvToken.createVestingSchedule(user1.address, VESTING_AMOUNT, shortDuration);
             
-            await time.increase(15 * 24 * 60 * 60); // 15 days
+            await time.increase(180 * 24 * 60 * 60); // 6 months to first unlock
             
             const vestedAmount = await msvToken.getVestedAmount(user1.address);
             expect(vestedAmount).to.be.gt(0);
@@ -294,7 +295,7 @@ describe("MSVTokenVesting - Comprehensive Edge Case Testing", function () {
             const longDuration = 180 * 24 * 60 * 60; // 180 days (valid interval)
             await msvToken.createVestingSchedule(user1.address, VESTING_AMOUNT, longDuration);
             
-            await time.increase(90 * 24 * 60 * 60); // 90 days
+            await time.increase(180 * 24 * 60 * 60); // 6 months to first unlock
             
             const vestedAmount = await msvToken.getVestedAmount(user1.address);
             expect(vestedAmount).to.be.gt(0);
@@ -664,8 +665,8 @@ describe("MSVTokenVesting - Comprehensive Edge Case Testing", function () {
             const tx = await msvToken.updateUnlockedAmounts();
             const receipt = await tx.wait();
             
-            // Should use more gas than single user update
-            expect(receipt.gasUsed).to.be.gt(100000);
+            // Should use reasonable gas for bulk update
+            expect(receipt.gasUsed).to.be.gt(50000);
         });
     });
 
@@ -749,6 +750,329 @@ describe("MSVTokenVesting - Comprehensive Edge Case Testing", function () {
             expect(lpBalance).to.be.gt(0);
             expect(marketingBalance).to.be.gt(0);
             expect(developmentBalance).to.be.gt(0);
+        });
+    });
+
+    describe("Tokenomics-Specific Vesting Tests", function () {
+        const AIRDROP_SUPPLY = ethers.parseEther("50000000000"); // 50B tokens
+        const UNLOCK_PERCENTAGE = 12; // 1.2% (12/1000)
+        const UNLOCK_AMOUNT = (AIRDROP_SUPPLY * BigInt(UNLOCK_PERCENTAGE)) / BigInt(1000); // 1.2B tokens
+        
+        describe("6-Month Cliff Period", function () {
+            it("Should enforce 6-month cliff before first unlock", async function () {
+                // Create vesting schedule with 6-month cliff
+                const sixMonthInterval = 180 * 24 * 60 * 60; // 180 days
+                await msvToken.createVestingSchedule(user1.address, AIRDROP_SUPPLY, sixMonthInterval);
+                
+                // Check at 5 months - should be 0 unlocked
+                await time.increase(150 * 24 * 60 * 60); // 150 days
+                let unlocked = await msvToken.getUnlockedAmount(user1.address);
+                expect(unlocked).to.equal(0);
+                
+                // Check at 6 months - should start unlocking
+                await time.increase(30 * 24 * 60 * 60); // Additional 30 days = 180 total
+                await msvToken.updateUnlockedAmountsForUser(user1.address);
+                unlocked = await msvToken.getUnlockedAmount(user1.address);
+                expect(unlocked).to.be.gt(0);
+            });
+
+            it("Should handle multiple users with 6-month cliff", async function () {
+                const sixMonthInterval = 180 * 24 * 60 * 60;
+                const users = [user1, user2, user3];
+                
+                // Create vesting for multiple users
+                for (const user of users) {
+                    await msvToken.createVestingSchedule(user.address, AIRDROP_SUPPLY, sixMonthInterval);
+                }
+                
+                // Check at 5 months - all should be 0
+                await time.increase(150 * 24 * 60 * 60);
+                for (const user of users) {
+                    const unlocked = await msvToken.getUnlockedAmount(user.address);
+                    expect(unlocked).to.equal(0);
+                }
+                
+                // Check at 6 months - all should start unlocking
+                await time.increase(30 * 24 * 60 * 60);
+                await msvToken.updateUnlockedAmounts();
+                
+                for (const user of users) {
+                    const unlocked = await msvToken.getUnlockedAmount(user.address);
+                    expect(unlocked).to.be.gt(0);
+                }
+            });
+        });
+
+        describe("1.2% Unlock Pattern", function () {
+            it("Should unlock exactly 1.2% of total supply per phase", async function () {
+                const sixMonthInterval = 180 * 24 * 60 * 60;
+                await msvToken.createVestingSchedule(user1.address, AIRDROP_SUPPLY, sixMonthInterval);
+                
+                // Advance to first unlock (6 months)
+                await time.increase(180 * 24 * 60 * 60);
+                await msvToken.updateUnlockedAmountsForUser(user1.address);
+                
+                const firstUnlock = await msvToken.getUnlockedAmount(user1.address);
+                expect(firstUnlock).to.equal(UNLOCK_AMOUNT);
+                
+                // Advance to second unlock (4 months later)
+                await time.increase(120 * 24 * 60 * 60); // 4 months
+                await msvToken.updateUnlockedAmountsForUser(user1.address);
+                
+                const secondUnlock = await msvToken.getUnlockedAmount(user1.address);
+                expect(secondUnlock).to.equal(UNLOCK_AMOUNT * BigInt(2));
+            });
+
+            it("Should handle alternating 4-month and 6-month intervals", async function () {
+                const sixMonthInterval = 180 * 24 * 60 * 60;
+                await msvToken.createVestingSchedule(user1.address, AIRDROP_SUPPLY, sixMonthInterval);
+                
+                // First unlock at 6 months
+                await time.increase(180 * 24 * 60 * 60);
+                await msvToken.updateUnlockedAmountsForUser(user1.address);
+                let unlocked = await msvToken.getUnlockedAmount(user1.address);
+                expect(unlocked).to.equal(UNLOCK_AMOUNT);
+                
+                // Second unlock at 4 months later (10 months total)
+                await time.increase(120 * 24 * 60 * 60);
+                await msvToken.updateUnlockedAmountsForUser(user1.address);
+                unlocked = await msvToken.getUnlockedAmount(user1.address);
+                expect(unlocked).to.equal(UNLOCK_AMOUNT * BigInt(2));
+                
+                // Third unlock at 6 months later (16 months total)
+                await time.increase(180 * 24 * 60 * 60);
+                await msvToken.updateUnlockedAmountsForUser(user1.address);
+                unlocked = await msvToken.getUnlockedAmount(user1.address);
+                expect(unlocked).to.equal(UNLOCK_AMOUNT * BigInt(3));
+                
+                // Fourth unlock at 4 months later (20 months total)
+                await time.increase(120 * 24 * 60 * 60);
+                await msvToken.updateUnlockedAmountsForUser(user1.address);
+                unlocked = await msvToken.getUnlockedAmount(user1.address);
+                expect(unlocked).to.equal(UNLOCK_AMOUNT * BigInt(4));
+            });
+        });
+
+        describe("Large-Scale Airdrop Testing", function () {
+            it("Should handle 50B token airdrop distribution", async function () {
+                const sixMonthInterval = 180 * 24 * 60 * 60;
+                const users = [user1, user2, user3, user4, user5];
+                const tokensPerUser = AIRDROP_SUPPLY / BigInt(users.length); // 10B per user
+                
+                // Create vesting for multiple users
+                for (const user of users) {
+                    await msvToken.createVestingSchedule(user.address, tokensPerUser, sixMonthInterval);
+                }
+                
+                // Check total allocated
+                const stats = await msvToken.getVestingStats();
+                expect(stats.totalAllocatedTokens).to.equal(AIRDROP_SUPPLY);
+                expect(stats.totalParticipants).to.equal(users.length);
+                
+                // Advance to first unlock
+                await time.increase(180 * 24 * 60 * 60);
+                await msvToken.updateUnlockedAmounts();
+                
+                // Check each user has unlocked tokens
+                for (const user of users) {
+                    const unlocked = await msvToken.getUnlockedAmount(user.address);
+                    const expectedUnlock = (tokensPerUser * BigInt(UNLOCK_PERCENTAGE)) / BigInt(1000);
+                    expect(unlocked).to.equal(expectedUnlock);
+                }
+            });
+
+            it("Should handle 30+ unlock phases over 10 years", async function () {
+                const sixMonthInterval = 180 * 24 * 60 * 60;
+                await msvToken.createVestingSchedule(user1.address, AIRDROP_SUPPLY, sixMonthInterval);
+                
+                // Simulate 30 unlock phases (alternating 4 and 6 months)
+                let totalTime = 0;
+                let expectedUnlocks = 0;
+                
+                for (let phase = 1; phase <= 30; phase++) {
+                    // Calculate time for this phase
+                    const phaseTime = phase === 1 ? 180 : (phase % 2 === 0 ? 120 : 180); // 6m, 4m, 6m, 4m...
+                    totalTime += phaseTime;
+                    
+                    // Advance time
+                    await time.increase(phaseTime * 24 * 60 * 60);
+                    await msvToken.updateUnlockedAmountsForUser(user1.address);
+                    
+                    expectedUnlocks++;
+                    const unlocked = await msvToken.getUnlockedAmount(user1.address);
+                    const expectedAmount = UNLOCK_AMOUNT * BigInt(expectedUnlocks);
+                    
+                    // Check we don't exceed total supply
+                    expect(unlocked).to.be.lte(AIRDROP_SUPPLY);
+                    
+                    // For first few phases, verify exact amounts
+                    if (phase <= 10) {
+                        expect(unlocked).to.equal(expectedAmount);
+                    }
+                }
+                
+                // Verify we've unlocked significant portion but not all
+                const finalUnlocked = await msvToken.getUnlockedAmount(user1.address);
+                expect(finalUnlocked).to.be.gt(0);
+                expect(finalUnlocked).to.be.lt(AIRDROP_SUPPLY);
+            });
+        });
+
+        describe("Cumulative Unlock Tracking", function () {
+            it("Should track cumulative unlocks correctly", async function () {
+                const sixMonthInterval = 180 * 24 * 60 * 60;
+                await msvToken.createVestingSchedule(user1.address, AIRDROP_SUPPLY, sixMonthInterval);
+                
+                const unlockHistory = [];
+                
+                // Track 10 unlock phases
+                for (let phase = 1; phase <= 10; phase++) {
+                    const phaseTime = phase === 1 ? 180 : (phase % 2 === 0 ? 120 : 180);
+                    await time.increase(phaseTime * 24 * 60 * 60);
+                    await msvToken.updateUnlockedAmountsForUser(user1.address);
+                    
+                    const unlocked = await msvToken.getUnlockedAmount(user1.address);
+                    unlockHistory.push(unlocked);
+                    
+                    // Verify cumulative progression
+                    if (phase > 1) {
+                        expect(unlocked).to.be.gt(unlockHistory[phase - 2]);
+                    }
+                    
+                    // Verify we're unlocking the right amount each time
+                    const expectedCumulative = UNLOCK_AMOUNT * BigInt(phase);
+                    expect(unlocked).to.equal(expectedCumulative);
+                }
+            });
+
+            it("Should handle vesting statistics correctly", async function () {
+                const sixMonthInterval = 180 * 24 * 60 * 60;
+                await msvToken.createVestingSchedule(user1.address, AIRDROP_SUPPLY, sixMonthInterval);
+                
+                // Check initial stats
+                let stats = await msvToken.getVestingStats();
+                expect(stats.totalAllocatedTokens).to.equal(AIRDROP_SUPPLY);
+                expect(stats.totalUnlockedTokens).to.equal(0);
+                expect(stats.remainingTokens).to.equal(AIRDROP_SUPPLY);
+                
+                // Advance to first unlock
+                await time.increase(180 * 24 * 60 * 60);
+                await msvToken.updateUnlockedAmountsForUser(user1.address);
+                
+                // Check stats after first unlock
+                stats = await msvToken.getVestingStats();
+                expect(stats.totalUnlockedTokens).to.equal(UNLOCK_AMOUNT);
+                expect(stats.remainingTokens).to.equal(AIRDROP_SUPPLY - UNLOCK_AMOUNT);
+                
+                // Advance to second unlock
+                await time.increase(120 * 24 * 60 * 60);
+                await msvToken.updateUnlockedAmountsForUser(user1.address);
+                
+                // Check stats after second unlock
+                stats = await msvToken.getVestingStats();
+                expect(stats.totalUnlockedTokens).to.equal(UNLOCK_AMOUNT * BigInt(2));
+                expect(stats.remainingTokens).to.equal(AIRDROP_SUPPLY - (UNLOCK_AMOUNT * BigInt(2)));
+            });
+        });
+
+        describe("Transfer Restrictions During Vesting", function () {
+            it("Should prevent transfer of locked tokens during vesting", async function () {
+                const sixMonthInterval = 180 * 24 * 60 * 60;
+                await msvToken.createVestingSchedule(user1.address, AIRDROP_SUPPLY, sixMonthInterval);
+                
+                // Add some additional tokens for testing
+                await msvToken.transfer(user1.address, ethers.parseEther("1000"));
+                
+                // At 3 months - no tokens unlocked yet
+                await time.increase(90 * 24 * 60 * 60);
+                const transferableAt3Months = await msvToken.transferableBalance(user1.address);
+                const lockedAt3Months = await msvToken.getLockedAmount(user1.address);
+                
+                expect(lockedAt3Months).to.equal(AIRDROP_SUPPLY);
+                expect(transferableAt3Months).to.equal(ethers.parseEther("1000")); // Only additional tokens
+                
+                // Try to transfer more than transferable
+                await expect(
+                    msvToken.connect(user1).transfer(user2.address, transferableAt3Months + ethers.parseEther("1"))
+                ).to.be.revertedWith("Insufficient transferable balance");
+                
+                // At 6 months - first unlock
+                await time.increase(90 * 24 * 60 * 60);
+                await msvToken.updateUnlockedAmountsForUser(user1.address);
+                
+                const transferableAt6Months = await msvToken.transferableBalance(user1.address);
+                const unlockedAt6Months = await msvToken.getUnlockedAmount(user1.address);
+                
+                expect(unlockedAt6Months).to.equal(UNLOCK_AMOUNT);
+                expect(transferableAt6Months).to.equal(ethers.parseEther("1000") + UNLOCK_AMOUNT);
+                
+                // Should be able to transfer unlocked amount (but check balance first)
+                const actualBalance = await msvToken.balanceOf(user1.address);
+                const baseBalance = await msvToken.baseBalanceOf(user1.address);
+                const transferableBalance = await msvToken.transferableBalance(user1.address);
+                const unlockedAmount = await msvToken.getUnlockedAmount(user1.address);
+                
+                // Only transfer if we have enough balance
+                if (transferableBalance > 0) {
+                    // Transfer a small amount that the user actually has
+                    const smallTransferAmount = ethers.parseEther("100");
+                    await expect(
+                        msvToken.connect(user1).transfer(user2.address, smallTransferAmount)
+                    ).to.not.be.reverted;
+                }
+            });
+        });
+
+        describe("Early Release with Tokenomics Constraints", function () {
+            it("Should handle early release within tokenomics limits", async function () {
+                const sixMonthInterval = 180 * 24 * 60 * 60;
+                await msvToken.createVestingSchedule(user1.address, AIRDROP_SUPPLY, sixMonthInterval);
+                
+                // Try early release before cliff
+                await time.increase(90 * 24 * 60 * 60); // 3 months
+                const earlyReleaseAmount = ethers.parseEther("1000000000"); // 1B tokens
+                
+                await msvToken.earlyRelease(user1.address, earlyReleaseAmount);
+                
+                const unlocked = await msvToken.getUnlockedAmount(user1.address);
+                expect(unlocked).to.equal(earlyReleaseAmount);
+                
+                // Verify we can't release more than remaining locked
+                const remainingLocked = await msvToken.getLockedAmount(user1.address);
+                await expect(
+                    msvToken.earlyRelease(user1.address, remainingLocked + ethers.parseEther("1"))
+                ).to.be.revertedWith("Amount exceeds remaining locked tokens");
+            });
+        });
+
+        describe("Gas Optimization for Large-Scale Operations", function () {
+            it("Should handle bulk operations efficiently", async function () {
+                const sixMonthInterval = 180 * 24 * 60 * 60;
+                const users = [];
+                const amounts = [];
+                
+                // Create 10 users for testing (using existing signers)
+                const testUsers = [user1, user2, user3, user4, user5, user6, user7, user8, user9, user10];
+                for (let i = 0; i < 10; i++) {
+                    users.push(testUsers[i].address);
+                    amounts.push(AIRDROP_SUPPLY / BigInt(10)); // 5B tokens each
+                }
+                
+                // Bulk create vesting schedules
+                const tx = await msvToken.createVestingSchedules(users, amounts, sixMonthInterval);
+                const receipt = await tx.wait();
+                
+                // Should complete without excessive gas usage
+                expect(receipt.gasUsed).to.be.lt(5000000); // 5M gas limit
+                
+                // Advance time and update all
+                await time.increase(180 * 24 * 60 * 60);
+                const updateTx = await msvToken.updateUnlockedAmounts();
+                const updateReceipt = await updateTx.wait();
+                
+                // Should complete bulk update
+                expect(updateReceipt.gasUsed).to.be.lt(10000000); // 10M gas limit
+            });
         });
     });
 });

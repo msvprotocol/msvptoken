@@ -368,7 +368,8 @@ contract MSVTokenVesting is ERC20, Ownable, ReentrancyGuard, Pausable {
     }
     
     /**
-     * @dev Get vested amount for a user
+     * @dev Get vested amount for a user based on tokenomics schedule
+     * 6-month cliff, then 1.2% unlocks every 4-6 months alternating
      */
     function getVestedAmount(address user) public view returns (uint256) {
         VestingSchedule storage schedule = vestingSchedules[user];
@@ -383,22 +384,71 @@ contract MSVTokenVesting is ERC20, Ownable, ReentrancyGuard, Pausable {
             return 0;
         }
         
-        if (currentTime >= schedule.endTime) {
-            return schedule.totalAmount;
+        // Calculate time since start
+        uint256 timeSinceStart = currentTime - schedule.startTime;
+        
+        // First unlock happens at 6 months from TGE
+        if (timeSinceStart < 180 days) {
+            return 0;
         }
         
-        uint256 elapsedTime = currentTime - schedule.startTime;
-        uint256 totalDuration = schedule.endTime - schedule.startTime;
+        // Calculate unlock phases after 6 months
+        uint256 timeAfterFirstUnlock = timeSinceStart - 180 days;
         
-        // Use higher precision to avoid rounding errors
-        uint256 vestedPercentage = (elapsedTime * 1e18) / totalDuration; // 1e18 = 100%
+        // Each unlock is 1.2% of total supply
+        uint256 unlockPercentage = 12; // 1.2% = 12/1000
+        uint256 unlockAmount = (schedule.totalAmount * unlockPercentage) / 1000;
         
-        // Ensure we don't exceed 100%
-        if (vestedPercentage > 1e18) {
-            vestedPercentage = 1e18;
+        // Calculate how many unlock phases have passed
+        uint256 totalUnlockPhases = 0;
+        
+        // Pattern: First unlock at 6 months, then alternating 4 months, 6 months
+        // Phase 1: 6 months (180 days) - first unlock
+        // Phase 2: 4 months (120 days) - second unlock  
+        // Phase 3: 6 months (180 days) - third unlock
+        // Phase 4: 4 months (120 days) - fourth unlock
+        // etc.
+        
+        // Check if we've passed the first unlock (6 months from TGE)
+        if (timeSinceStart >= 180 days) {
+            totalUnlockPhases++;
+            
+            // Check additional phases
+            uint256 remainingTime = timeAfterFirstUnlock;
+            
+            // Second phase: 4 months
+            if (remainingTime >= 120 days) {
+                totalUnlockPhases++;
+                remainingTime -= 120 days;
+                
+                // Third phase: 6 months
+                if (remainingTime >= 180 days) {
+                    totalUnlockPhases++;
+                    remainingTime -= 180 days;
+                    
+                    // Fourth phase: 4 months
+                    if (remainingTime >= 120 days) {
+                        totalUnlockPhases++;
+                        remainingTime -= 120 days;
+                        
+                        // Continue pattern for remaining phases
+                        uint256 phaseCount = 4;
+                        while (remainingTime > 0 && phaseCount < 30) {
+                            uint256 phaseInterval = (phaseCount % 2 == 0) ? 180 days : 120 days;
+                            if (remainingTime >= phaseInterval) {
+                                totalUnlockPhases++;
+                                remainingTime -= phaseInterval;
+                            } else {
+                                break;
+                            }
+                            phaseCount++;
+                        }
+                    }
+                }
+            }
         }
         
-        return (schedule.totalAmount * vestedPercentage) / 1e18;
+        return unlockAmount * totalUnlockPhases;
     }
     
     /**
