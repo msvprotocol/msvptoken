@@ -2,7 +2,7 @@
 
 A modern, responsive admin dashboard for managing the MSVP Token Vesting smart contract with comprehensive functionality and real-time monitoring.
 
-## 🚀 Quick Start
+## Quick Start
 
 1. **Open the Dashboard**
    ```bash
@@ -23,7 +23,7 @@ A modern, responsive admin dashboard for managing the MSVP Token Vesting smart c
    - Manage tax rates
    - Monitor participants
 
-## 📋 Contract Information
+## Contract Information
 
 - **Contract Address**: `0xBA1B16B7b9Bd2bD0ccE2634493dB70e81975e99d`
 - **Network**: BSC Testnet
@@ -31,38 +31,38 @@ A modern, responsive admin dashboard for managing the MSVP Token Vesting smart c
 - **Total Supply**: 100 Billion MSV
 - **Version**: 2.0.0
 
-## 🔧 Key Features
+## Key Features
 
-### 🎯 Vesting Management
+### Vesting Management
 - **Automatic Start**: Vesting schedules start immediately upon creation
 - **Single User Creation**: Create individual vesting schedules
 - **Bulk CSV Upload**: Upload CSV files for batch operations
 - **Early Release**: Unlock specific amounts for users
-- **🚨 Emergency Unlock ALL**: Instantly unlock all remaining tokens for a user
+- **Emergency Unlock ALL**: Instantly unlock all remaining tokens for a user
 - **Schedule Modification**: Increase or decrease total allocations
 - **Gas Optimization**: Individual user updates for efficiency
 
-### 💰 Tax Management
+### Tax Management
 - **Transfer Tax**: Configurable up to 10% (100/1000)
 - **Tax Breakdown**: LP (2%), Development (1.5%), Marketing (1%), Burn (0.5%)
 - **Individual Components**: Update each tax component separately
 - **Exclusions**: Exclude addresses from tax and max transaction limits
 
-### 📊 Enhanced Monitoring
+### Enhanced Monitoring
 - **Real-time Statistics**: Live updates every 30 seconds
 - **Tax Breakdown Display**: See all tax components
 - **Participant Lookup**: Detailed balance information
 - **Balance Types**: Base balance, transferable balance, locked amount, vested amount
 - **Export Functionality**: Download participant data as CSV
 
-### 🛡️ Security & Controls
+### Security & Controls
 - **Pause/Unpause**: Emergency contract controls
-- **🚨 Emergency Unlock ALL**: Complete token unlock for crisis situations
+- **Emergency Unlock ALL**: Complete token unlock for crisis situations
 - **Admin Rights**: Burn admin privileges permanently
 - **Wallet Management**: Update LP, Marketing, and Development wallets
 - **Transaction Limits**: Configure max transaction amounts
 
-## 📁 CSV Format
+## CSV Format
 
 For bulk vesting creation, use this CSV format:
 ```csv
@@ -71,7 +71,7 @@ address,amount
 0x2345678901234567890123456789012345678901,15000
 ```
 
-## 🔄 Wallet Connection
+## Wallet Connection
 
 ### MetaMask (Recommended)
 1. Install MetaMask extension
@@ -84,7 +84,7 @@ address,amount
 2. Scan QR code or use deep link
 3. Approve connection
 
-## 📈 Statistics Display
+## Statistics Display
 
 The dashboard shows:
 - **Total Participants**: Number of vesting participants
@@ -94,7 +94,7 @@ The dashboard shows:
 - **Tax Breakdown**: Current tax rates for all components
 - **Contract Status**: Active/Paused state
 
-## 🎛️ Admin Functions
+## Admin Functions
 
 ### Vesting Operations
 - `createVestingSchedule()`: Create individual vesting (no interval needed)
@@ -116,7 +116,7 @@ The dashboard shows:
 - `unpause()`: Resume transfers
 - `burnAdminRights()`: Permanently remove admin access
 
-## 🔍 Participant Lookup
+## Participant Lookup
 
 Enhanced participant information includes:
 - **Total Vesting Amount**: Original allocation
@@ -127,7 +127,7 @@ Enhanced participant information includes:
 - **Vested Amount**: Calculated vested amount
 - **Schedule Details**: Start/end times, intervals
 
-## ⚠️ Important Notes
+## Important Notes
 
 ### Gas Optimization
 - Use "Update User" for individual participants (low gas)
@@ -145,7 +145,7 @@ Enhanced participant information includes:
 - Inconsistency detection and logging
 - 1-year maximum vesting duration
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### Connection Issues
 - Ensure you're on BSC Testnet (chainId: 97)
@@ -162,14 +162,14 @@ Enhanced participant information includes:
 - Check browser console for errors
 - Ensure JavaScript is enabled
 
-## 🔒 Security Notes
+## Security Notes
 
 - **Private Keys**: Never share your private key
 - **Admin Rights**: Be careful with admin functions
 - **Contract Verification**: Always verify contracts on BSCScan
 - **Test First**: Test all functions on testnet before mainnet
 
-## 📞 Support
+## Support
 
 For issues or questions:
 1. Check the browser console for error messages
@@ -177,7 +177,7 @@ For issues or questions:
 3. Ensure wallet connection is active
 4. Review transaction history on BSCScan
 
-## 🔄 Version History
+## Version History
 
 - **v2.0.0**: Enhanced balance management, gas optimization, automatic vesting
 - **v1.0.0**: Initial release with basic functionality 

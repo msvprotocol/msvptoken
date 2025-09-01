@@ -197,7 +197,7 @@ npm run deploy:mainnet:integrated
 - **Function**: `earlyRelease(address user, uint256 amount)`
 - **Restrictions**: Cannot release more than remaining locked tokens
 
-#### 🚨 Emergency Unlock ALL Function
+#### Emergency Unlock ALL Function
 - **Purpose**: **CRITICAL** - Instantly unlocks ALL remaining tokens for a user
 - **Example**: User has 1000 tokens locked -> Admin emergency unlocks ALL -> All 1000 tokens become immediately transferable
 - **Function**: `emergencyUnlockAll(address user)`
@@ -330,7 +330,7 @@ console.log(`Valid entries: ${requirements.validEntries}`);
 // Early release for specific user
 await msvpToken.earlyRelease(userAddress, amount);
 
-// 🚨 Emergency unlock ALL remaining tokens for a user
+// Emergency unlock ALL remaining tokens for a user
 await msvpToken.emergencyUnlockAll(userAddress);
 
 // Modify vesting schedule (can increase or decrease total allocation)
@@ -355,7 +355,7 @@ const transferableBalance = await msvpToken.transferableBalance(userAddress);
 const lockedAmount = await msvpToken.getLockedAmount(userAddress);
 ```
 
-## 🚨 Critical Fix Implemented
+## Critical Fix Implemented
 
 ### **Vesting Token Transfer Issue - RESOLVED**
 
@@ -376,7 +376,7 @@ const lockedAmount = await msvpToken.getLockedAmount(userAddress);
 - `TokensTransferredForVesting` event - Track token transfers during vesting creation
 - **Balance validation** - Prevents operations when admin has insufficient tokens
 
-**Result**: Users now receive actual tokens and can participate in vesting immediately! 🎉
+**Result**: Users now receive actual tokens and can participate in vesting immediately! 
 
 ---
 
@@ -477,7 +477,7 @@ TokenAirdrop/
 
 ## How The Smart Contract Works
 
-### 🏗️ Smart Contract Architecture
+### Smart Contract Architecture
 
 The MSVP contract implements a sophisticated balance management system with **three different balance types** to handle vested tokens:
 
@@ -529,7 +529,7 @@ Each user has a `VestingSchedule` that tracks:
 - **`startTime`**: When vesting began (TGE - Token Generation Event)
 - **`isActive`**: Whether vesting is currently active
 
-### 📈 Vesting Timeline & Unlocking Process
+### Vesting Timeline & Unlocking Process
 
 The contract implements the exact vesting schedule:
 
@@ -547,7 +547,7 @@ The contract implements the exact vesting schedule:
 | ...       | ...       | ...          | Continues... | ... | ... | ... |
 | Q19       | 61        | 6            | Final unlock | 3,000,000,000 | 100              | 50,000,000,000       |
 
-### 🔄 Balance Update Mechanism
+### Balance Update Mechanism
 
 The contract automatically updates unlocked amounts during:
 
@@ -563,11 +563,11 @@ The contract automatically updates unlocked amounts during:
 
 3. **Bulk Updates**: Admin can update all participants with `updateUnlockedAmounts()`
 
-### 🚫 Transfer Restrictions & Limitations
+### Transfer Restrictions & Limitations
 
 #### **Key Limitations**
 
-1. **🔒 Transferable Balance Check**:
+1. **Transferable Balance Check**:
    ```solidity
    uint256 transferable = transferableBalance(from);
    require(transferable >= amount, "Insufficient transferable balance");
@@ -583,13 +583,13 @@ The contract automatically updates unlocked amounts during:
    - Can be modified by admin
    - Certain addresses can be excluded
 
-3. **💰 Transfer Tax** (5% default):
+3. **Transfer Tax** (5% default):
    - **2% to LP wallet**
    - **1.5% to development**
    - **1% to marketing**
    - **0.5% burned**
 
-### 📊 Practical Example
+### Practical Example
 
 Let's say Alice has an airdrop allocation:
 
@@ -623,7 +623,7 @@ Alice's Address: 0x123...
 └── Unlocked Amount: 120,000 tokens
 ```
 
-### 🔍 How Users Interact
+### How Users Interact
 
 #### **For Regular Users:**
 
@@ -657,7 +657,7 @@ console.log({
 3. **Bulk Updates**: `updateUnlockedAmounts()` - Admin only, gas expensive
 4. **View Functions**: All balance queries are gas-free
 
-### 🛡️ Security Features
+### Security Features
 
 1. **Immutable Vesting Logic**: Once schedule is set, unlock timing cannot be changed
 2. **Admin Controls**: Early release and schedule modifications (with restrictions)
@@ -667,7 +667,7 @@ console.log({
 
 This design ensures that users can see their complete token ownership while only being able to spend what's actually available, providing transparency and security in the vesting process.
 
-### 🔄 **Vesting Schedule Lifecycle Management**
+### **Vesting Schedule Lifecycle Management**
 
 #### **Automatic Lifecycle Stages:**
 
@@ -815,14 +815,14 @@ For support and questions:
 
 ### Version 2.1.0 - Vesting Management & Auto-Deactivation
 
-#### ✅ **New Features Added:**
+#### **New Features Added:**
 
-1. **🚨 Emergency Unlock ALL Function**
+1. **Emergency Unlock ALL Function**
    - `emergencyUnlockAll(address user)` - Instantly unlock all remaining tokens
    - Complete emergency override for critical situations
    - Comprehensive test coverage and admin dashboard integration
 
-2. **🛠️ Complete Vesting Schedule Management**
+2. **Complete Vesting Schedule Management**
    - `deactivateVestingSchedule(address user)` - Pause vesting temporarily
    - `reactivateVestingSchedule(address user)` - Resume paused vesting
    - `cancelVestingSchedule(address user)` - Permanently cancel vesting (emergency)
@@ -835,7 +835,7 @@ For support and questions:
    - **VestingScheduleCompleted** event emission for tracking
    - **Clean state management** with clear active/inactive distinction
 
-#### 🔧 **Breaking Changes:**
+#### **Breaking Changes:**
 
 1. **Removed `releaseInterval` Parameter** (Breaking Change)
    - **Before**: `createVestingSchedule(user, amount, releaseInterval)`
@@ -847,7 +847,7 @@ For support and questions:
    - **Before**: `VestingScheduleCreated(user, amount, startTime, endTime, releaseInterval)`
    - **After**: `VestingScheduleCreated(user, amount, startTime, endTime)`
 
-#### 📊 **Updated Features:**
+#### **Updated Features:**
 
 1. **Enhanced `isVestingComplete()` Function**
    - Now works correctly for both active and deactivated schedules
@@ -858,7 +858,7 @@ For support and questions:
    - Removed unused interval selection inputs
    - Updated CSV format documentation (now: `address,amount`)
 
-#### 🧪 **Test Coverage:**
+#### **Test Coverage:**
 
 - **32 comprehensive tests** including new management functions
 - **6 new tests** specifically for vesting schedule management

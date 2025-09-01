@@ -1,6 +1,6 @@
 # MSVP Contract Test Suite Documentation
 
-## 📋 Overview
+## Overview
 
 This document provides comprehensive documentation of the MSVP (MetaSoilVerseProtocol) smart contract test suite, covering all test results, edge cases, and coverage details.
 
@@ -11,7 +11,7 @@ This document provides comprehensive documentation of the MSVP (MetaSoilVersePro
 - **Coverage**: 95.6% of contract functionality
 - **Status**: All tests passing
 
-## 📁 Test Structure
+## Test Structure
 
 ### 1. **MSVP - Updated Tokenomics Schedule Testing** (32 tests)
 Core vesting and token functionality tests
@@ -24,7 +24,7 @@ Advanced edge case testing for comprehensive coverage
 
 ---
 
-## 🏗️ Core Vesting Tests (32 tests)
+## Core Vesting Tests (32 tests)
 
 ### Contract Constants & Configuration (3 tests)
 - ✅ Should have correct token supply constants
@@ -84,7 +84,7 @@ Advanced edge case testing for comprehensive coverage
 
 ---
 
-## 💰 Transfer Tax System Tests (32 tests)
+## Transfer Tax System Tests (32 tests)
 
 ### Basic Tax Calculation & Distribution (3 tests)
 - ✅ Should calculate 5% tax correctly on transfers
@@ -135,7 +135,7 @@ Advanced edge case testing for comprehensive coverage
 
 ---
 
-## 🔍 Enhanced Edge Cases Tests (8 tests)
+## Enhanced Edge Cases Tests (8 tests)
 
 ### getLockedAmount Edge Cases (4 tests)
 - ✅ Should handle locked amount with deactivated vesting
@@ -151,7 +151,7 @@ Advanced edge case testing for comprehensive coverage
 
 ---
 
-## 📊 Test Coverage Analysis
+## Test Coverage Analysis
 
 ### Function Coverage: 95.6% (43/45 functions)
 - **Core ERC20 Functions**: 100% (3/3)
@@ -182,7 +182,7 @@ Advanced edge case testing for comprehensive coverage
 
 ---
 
-## 🚨 Known Issues & Limitations
+## Known Issues & Limitations
 
 ### 1. Tax Distribution Logic Issue
 **Description**: The tax distribution system has a fundamental flaw where it tries to transfer tax amounts from the sender to various wallets, but the sender may not have enough tokens to cover both the original transfer and tax distribution.
@@ -202,7 +202,7 @@ Advanced edge case testing for comprehensive coverage
 
 ---
 
-## 🎯 Test Suite Strengths
+## Test Suite Strengths
 
 ### 1. **Comprehensive Coverage**
 - All major functions tested (95.6%)
@@ -230,7 +230,7 @@ Advanced edge case testing for comprehensive coverage
 
 ---
 
-## 🔧 Test Execution
+## Test Execution
 
 ### Running All Tests
 ```bash
@@ -260,7 +260,7 @@ npx hardhat test --verbose
 
 ---
 
-## 📈 Performance Metrics
+## Performance Metrics
 
 ### Gas Usage (Average)
 - **Contract Deployment**: 3,466,604 gas
@@ -276,7 +276,7 @@ npx hardhat test --verbose
 
 ---
 
-## 🎉 Conclusion
+## Conclusion
 
 The MSVP contract test suite provides **EXCELLENT** coverage with **95.6%** of all functions tested and **72 comprehensive tests passing**. The current test suite is **production-ready** and covers:
 

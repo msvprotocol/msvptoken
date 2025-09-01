@@ -1,6 +1,6 @@
 # MSVP Token CSV Format Guide
 
-## 📋 Overview
+## Overview
 
 This guide explains the CSV format required for bulk vesting schedule creation in the MSVP (MetaSoilVerseProtocol) smart contract.
 
@@ -21,7 +21,7 @@ This guide explains the CSV format required for bulk vesting schedule creation i
   - **Phase 2** (Months 22-49): 7% every 3 months = 65.2% total
   - **Phase 3** (Months 52-61): 6% every 3 months = 29.6% total
 
-## 📁 CSV File Formats
+## CSV File Formats
 
 ### 1. Basic Format (Recommended for Production)
 
@@ -66,7 +66,7 @@ address,amount,cliff_end,phase1_end,phase2_end,phase3_end,vesting_complete
 - The contract automatically calculates all vesting periods
 - Use the basic format for actual contract operations
 
-## 🔧 CSV Requirements
+## CSV Requirements
 
 ### Format Rules
 1. **Header Row**: Must include `address,amount`
@@ -91,7 +91,7 @@ address,amount
 0x3456789012345678901234567890123456789012,5000000
 ```
 
-## 📊 Amount Guidelines
+## Amount Guidelines
 
 ### Recommended Amounts
 - **Small Holders**: 1,000,000 - 10,000,000 MSVP
@@ -104,7 +104,7 @@ address,amount
 - **Plan Distribution**: Ensure total doesn't exceed supply
 - **Buffer**: Leave some tokens for future allocations
 
-## 🚀 Using the CSV
+## Using the CSV
 
 ### 1. Contract Function
 ```solidity
@@ -164,7 +164,7 @@ await msvpToken.createVestingSchedules(addresses, amounts);
 - `"Amount must be greater than zero"`: Amount is 0 or negative
 - `"Vesting schedule already exists"`: Address already has a vesting schedule
 
-## 📈 Example Calculations
+## Example Calculations
 
 ### Sample Participant: 1,000,000 MSVP
 - **Cliff Period** (Months 0-6): 0 MSVP unlocked
@@ -194,7 +194,7 @@ await msvpToken.createVestingSchedules(addresses, amounts);
 - **Month 58**: 60,000 MSVP (6%)
 - **Month 61**: 116,000 MSVP (11.6%)
 
-## 📞 Support
+## Support
 
 For questions about CSV format or vesting schedules:
 1. Check the main README.md

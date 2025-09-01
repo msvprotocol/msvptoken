@@ -1,10 +1,10 @@
 # MSVP Testnet Token - Testing Guide
 
-## 🚀 Overview
+## Overview
 
 The `MSVPTest.sol` contract is an **ultra-fast testnet version** of the MSVP token with integrated vesting functionality. This version uses accelerated timing (minutes instead of months) to enable rapid testing of the complete vesting lifecycle on testnet.
 
-## ⚡ Key Features
+## Key Features
 
 ### **Ultra-Fast Testnet Timing**
 - **Cliff Period**: 1 minute (instead of 6 months)
@@ -23,7 +23,7 @@ The `MSVPTest.sol` contract is an **ultra-fast testnet version** of the MSVP tok
 - **Max Transaction**: 1% of total supply
 - **Tax Distribution**: LP, Development, Marketing, Burn
 
-## 🛠️ Setup & Deployment
+## Setup & Deployment
 
 ### **Prerequisites**
 ```bash
@@ -51,7 +51,7 @@ BSCSCAN_API_KEY=your_bscscan_api_key
 BSC_TESTNET_URL=https://data-seed-prebsc-1-s1.binance.org:8545/
 ```
 
-## 🧪 Testing the Testnet Token
+## Testing the Testnet Token
 
 ### **1. Basic Token Testing**
 
@@ -191,7 +191,7 @@ const devBalance = await msvpToken.balanceOf(developmentWallet.address);
 const marketingBalance = await msvpToken.balanceOf(marketingWallet.address);
 ```
 
-## 📊 Testing Timeline
+## Testing Timeline
 
 ### **Complete Vesting Test (61 minutes)**
 ```javascript
@@ -218,7 +218,7 @@ for (let minute = 0; minute <= totalMinutes; minute++) {
 }
 ```
 
-## 🔧 Configuration Testing
+## Configuration Testing
 
 ### **Update Tax Rates**
 ```javascript
@@ -244,7 +244,7 @@ await msvpToken.updateDevelopmentWallet(newDevWallet.address);
 await msvpToken.updateMarketingWallet(newMarketingWallet.address);
 ```
 
-## 🚨 Emergency Functions
+## Emergency Functions
 
 ### **Pause/Unpause**
 ```javascript
@@ -271,7 +271,7 @@ await expect(
 ).to.be.revertedWith("Ownable: caller is not the owner");
 ```
 
-## 📈 Monitoring & Verification
+## Monitoring & Verification
 
 ### **Check Vesting Statistics**
 ```javascript
@@ -296,7 +296,7 @@ participants.forEach((participant, index) => {
 });
 ```
 
-## ⚠️ Important Notes
+## Important Notes
 
 ### **Testnet vs Production**
 - **This contract is for TESTNET ONLY**
@@ -313,7 +313,7 @@ participants.forEach((participant, index) => {
 - On public testnets, wait for actual time to pass
 - Remember: 1 minute = 1 "month" in this testnet version
 
-## 🎯 Testing Checklist
+## Testing Checklist
 
 - [ ] Token deployment and initial supply
 - [ ] Basic transfers with tax calculation
@@ -330,7 +330,7 @@ participants.forEach((participant, index) => {
 - [ ] Pause/unpause functionality
 - [ ] Complete vesting lifecycle (61 minutes)
 
-## 🆘 Troubleshooting
+## Troubleshooting
 
 ### **Common Issues**
 1. **"Insufficient transferable balance"**: User hasn't unlocked tokens yet
@@ -355,7 +355,7 @@ console.log("User Status:", {
 });
 ```
 
-## 📚 Additional Resources
+## Additional Resources
 
 - **Main Contract**: `contracts/MSVP.sol` (production version)
 - **Test Files**: `test/MSVP_Updated.test.js` (comprehensive tests)
@@ -364,6 +364,6 @@ console.log("User Status:", {
 
 ---
 
-**Happy Testing! 🚀**
+**Happy Testing!**
 
 This testnet version allows you to test the complete MSVP token functionality in just over 1 hour instead of waiting for actual months. Perfect for rapid development and testing iterations! 
