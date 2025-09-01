@@ -1,6 +1,6 @@
-# MSV Token Vesting - Admin Dashboard
+# MSVP Token Vesting - Admin Dashboard
 
-A modern, responsive admin dashboard for managing the MSV Token Vesting smart contract with comprehensive functionality and real-time monitoring.
+A modern, responsive admin dashboard for managing the MSVP Token Vesting smart contract with comprehensive functionality and real-time monitoring.
 
 ## 🚀 Quick Start
 
@@ -27,7 +27,7 @@ A modern, responsive admin dashboard for managing the MSV Token Vesting smart co
 
 - **Contract Address**: `0xBA1B16B7b9Bd2bD0ccE2634493dB70e81975e99d`
 - **Network**: BSC Testnet
-- **Token**: MetaSoilVerse (MSV)
+- **Token**: MetaSoilVerseProtocol (MSV)
 - **Total Supply**: 100 Billion MSV
 - **Version**: 2.0.0
 
@@ -38,6 +38,7 @@ A modern, responsive admin dashboard for managing the MSV Token Vesting smart co
 - **Single User Creation**: Create individual vesting schedules
 - **Bulk CSV Upload**: Upload CSV files for batch operations
 - **Early Release**: Unlock specific amounts for users
+- **🚨 Emergency Unlock ALL**: Instantly unlock all remaining tokens for a user
 - **Schedule Modification**: Increase or decrease total allocations
 - **Gas Optimization**: Individual user updates for efficiency
 
@@ -56,6 +57,7 @@ A modern, responsive admin dashboard for managing the MSV Token Vesting smart co
 
 ### 🛡️ Security & Controls
 - **Pause/Unpause**: Emergency contract controls
+- **🚨 Emergency Unlock ALL**: Complete token unlock for crisis situations
 - **Admin Rights**: Burn admin privileges permanently
 - **Wallet Management**: Update LP, Marketing, and Development wallets
 - **Transaction Limits**: Configure max transaction amounts
@@ -95,8 +97,8 @@ The dashboard shows:
 ## 🎛️ Admin Functions
 
 ### Vesting Operations
-- `createVestingSchedule()`: Create individual vesting
-- `createVestingSchedules()`: Bulk creation from CSV
+- `createVestingSchedule()`: Create individual vesting (no interval needed)
+- `createVestingSchedules()`: Bulk creation from CSV (no interval needed)
 - `earlyRelease()`: Unlock tokens early
 - `modifyVestingSchedule()`: Change total allocation
 - `updateUnlockedAmountsForUser()`: Gas-efficient single user update

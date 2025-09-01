@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MSV Token Vesting - Admin Dashboard</title>
+    <title>MSVP Token Vesting - Admin Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -267,7 +267,7 @@
     <div class="dashboard-container">
         <!-- Header -->
         <div class="header">
-            <h1><i class="fas fa-chart-line"></i> MSV Token Vesting Admin Dashboard</h1>
+            <h1><i class="fas fa-chart-line"></i> MSVP Token Vesting Admin Dashboard</h1>
             <p>Manage your token vesting contracts and monitor participant activities</p>
             <div class="contract-info mt-3">
                 <div class="alert alert-info d-inline-block">
@@ -321,19 +321,19 @@
             <div class="col-lg-3 col-md-6 col-sm-6">
                 <div class="stats-card">
                     <h3 id="totalAllocated">0</h3>
-                    <p>Total Allocated (MSV)</p>
+                    <p>Total Allocated (MSVP)</p>
                 </div>
             </div>
             <div class="col-lg-3 col-md-6 col-sm-6">
                 <div class="stats-card">
                     <h3 id="totalUnlocked">0</h3>
-                    <p>Total Unlocked (MSV)</p>
+                    <p>Total Unlocked (MSVP)</p>
                 </div>
             </div>
             <div class="col-lg-3 col-md-6 col-sm-6">
                 <div class="stats-card">
                     <h3 id="remainingTokens">0</h3>
-                    <p>Remaining (MSV)</p>
+                    <p>Remaining (MSVP)</p>
                 </div>
             </div>
         </div>
@@ -377,18 +377,9 @@
                                 <input type="text" class="form-control" id="singleUserAddress" placeholder="User Address">
                             </div>
                             <div class="col-md-3">
-                                <input type="number" class="form-control" id="singleUserAmount" placeholder="Amount (MSV)">
+                                <input type="number" class="form-control" id="singleUserAmount" placeholder="Amount (MSVP)">
                             </div>
-                            <div class="col-md-3">
-                                <select class="form-select" id="singleUserInterval">
-                                    <option value="30">30 Days</option>
-                                    <option value="60">60 Days</option>
-                                    <option value="90" selected>90 Days</option>
-                                    <option value="120">120 Days</option>
-                                    <option value="180">180 Days</option>
-                                </select>
-                            </div>
-                            <div class="col-md-2">
+                            <div class="col-md-5">
                                 <button class="btn btn-primary w-100" id="createSingleVesting">
                                     <i class="fas fa-plus"></i> Create
                                 </button>
@@ -402,23 +393,14 @@
                         <div class="csv-upload" id="csvUpload">
                             <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
                             <p class="mb-2">Drag and drop your CSV file here or click to browse</p>
-                            <p class="text-muted small">Format: address,amount,interval_days</p>
+                            <p class="text-muted small">Format: address,amount</p>
                             <input type="file" id="csvFile" accept=".csv" style="display: none;">
                             <button class="btn btn-outline-primary" onclick="document.getElementById('csvFile').click()">
                                 <i class="fas fa-file-csv"></i> Choose File
                             </button>
                         </div>
                         <div class="row mt-3">
-                            <div class="col-md-4">
-                                <select class="form-select" id="bulkInterval">
-                                    <option value="30">30 Days</option>
-                                    <option value="60">60 Days</option>
-                                    <option value="90" selected>90 Days</option>
-                                    <option value="120">120 Days</option>
-                                    <option value="180">180 Days</option>
-                                </select>
-                            </div>
-                            <div class="col-md-8">
+                            <div class="col-md-12">
                                 <button class="btn btn-primary" id="createBulkVesting">
                                     <i class="fas fa-upload"></i> Create Bulk Vesting
                                 </button>
@@ -431,18 +413,28 @@
                 <div class="function-card">
                     <h5><i class="fas fa-unlock-alt"></i> Early Release & Modify</h5>
                     <div class="row">
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <h6>Early Release</h6>
                             <input type="text" class="form-control mb-2" id="earlyReleaseAddress" placeholder="User Address">
-                            <input type="number" class="form-control mb-2" id="earlyReleaseAmount" placeholder="Amount to Release (MSV)">
+                            <input type="number" class="form-control mb-2" id="earlyReleaseAmount" placeholder="Amount to Release (MSVP)">
                             <button class="btn btn-warning w-100" id="earlyRelease">
                                 <i class="fas fa-unlock"></i> Early Release
                             </button>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
+                            <h6>🚨 Emergency Unlock ALL</h6>
+                            <input type="text" class="form-control mb-2" id="emergencyUnlockAddress" placeholder="User Address">
+                            <div class="alert alert-danger p-2 mb-2" style="font-size: 0.8rem;">
+                                <strong>⚠️ WARNING:</strong> Unlocks ALL remaining tokens instantly!
+                            </div>
+                            <button class="btn btn-danger w-100" id="emergencyUnlockAll">
+                                <i class="fas fa-exclamation-triangle"></i> Emergency Unlock ALL
+                            </button>
+                        </div>
+                        <div class="col-md-4">
                             <h6>Modify Vesting Schedule</h6>
                             <input type="text" class="form-control mb-2" id="modifyAddress" placeholder="User Address">
-                            <input type="number" class="form-control mb-2" id="modifyAmount" placeholder="New Total Amount (MSV)">
+                            <input type="number" class="form-control mb-2" id="modifyAmount" placeholder="New Total Amount (MSVP)">
                             <button class="btn btn-info w-100" id="modifyVesting">
                                 <i class="fas fa-edit"></i> Modify Schedule
                             </button>
@@ -462,7 +454,7 @@
                             </div>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">Max Transaction Amount (MSV)</label>
+                            <label class="form-label">Max Transaction Amount (MSVP)</label>
                             <div class="input-group mb-3">
                                 <input type="number" class="form-control" id="maxTxAmount" placeholder="Amount">
                                 <button class="btn btn-outline-primary" id="updateMaxTx">Update</button>
@@ -610,7 +602,7 @@
                         <label class="form-label">Total Supply</label>
                         <div class="d-flex justify-content-between">
                             <span id="totalSupply">Loading...</span>
-                            <span class="badge bg-primary">MSV</span>
+                            <span class="badge bg-primary">MSVP</span>
                         </div>
                     </div>
                     <div class="mb-3">

@@ -21,40 +21,40 @@ async function main() {
   // Deploy MSV Token
   console.log("\n🔧 Deploying MSV Token...");
   const MSVToken = await ethers.getContractFactory("MSVToken");
-  const msvToken = await MSVToken.deploy(lpWallet, marketingWallet, referralWallet);
-  await msvToken.deployed();
+  const msvpToken = await MSVToken.deploy(lpWallet, marketingWallet, referralWallet);
+  await msvpToken.deployed();
 
-  console.log("✅ MSV Token deployed to:", msvToken.address);
-  console.log("   Token Name:", await msvToken.name());
-  console.log("   Token Symbol:", await msvToken.symbol());
-  console.log("   Total Supply:", ethers.utils.formatEther(await msvToken.totalSupply()));
+  console.log("✅ MSV Token deployed to:", msvpToken.address);
+  console.log("   Token Name:", await msvpToken.name());
+  console.log("   Token Symbol:", await msvpToken.symbol());
+  console.log("   Total Supply:", ethers.utils.formatEther(await msvpToken.totalSupply()));
 
   // Deploy Vesting Contract
   console.log("\n🔧 Deploying MSV Vesting Contract...");
   const MSVVesting = await ethers.getContractFactory("MSVVesting");
-  const msvVesting = await MSVVesting.deploy(msvToken.address);
+  const msvVesting = await MSVVesting.deploy(msvpToken.address);
   await msvVesting.deployed();
 
   console.log("✅ MSV Vesting deployed to:", msvVesting.address);
 
   // Transfer tokens to vesting contract (example: 20% of total supply for airdrop)
-  const totalSupply = await msvToken.totalSupply();
+  const totalSupply = await msvpToken.totalSupply();
   const airdropAmount = totalSupply.mul(20).div(100); // 20% for airdrop
 
   console.log("\n💰 Transferring tokens to vesting contract...");
   console.log("   Airdrop Amount:", ethers.utils.formatEther(airdropAmount));
 
-  const transferTx = await msvToken.transfer(msvVesting.address, airdropAmount);
+  const transferTx = await msvpToken.transfer(msvVesting.address, airdropAmount);
   await transferTx.wait();
 
   console.log("✅ Tokens transferred to vesting contract");
 
   // Verify token balance in vesting contract
-  const vestingBalance = await msvToken.balanceOf(msvVesting.address);
+  const vestingBalance = await msvpToken.balanceOf(msvVesting.address);
   console.log("   Vesting Contract Balance:", ethers.utils.formatEther(vestingBalance));
 
   // Get initial tax configuration
-  const taxBreakdown = await msvToken.getTaxBreakdown();
+  const taxBreakdown = await msvpToken.getTaxBreakdown();
   console.log("\n📊 Initial Tax Configuration:");
   console.log("   Transfer Tax Rate:", taxBreakdown.transferTax.toString(), "(5%)");
   console.log("   LP Contribution Rate:", taxBreakdown.lpContribution.toString(), "(2%)");
@@ -71,7 +71,7 @@ async function main() {
 
   console.log("\n🎉 Deployment completed successfully!");
   console.log("\n📋 Contract Addresses:");
-  console.log("   MSV Token:", msvToken.address);
+  console.log("   MSV Token:", msvpToken.address);
   console.log("   MSV Vesting:", msvVesting.address);
   console.log("   Deployer:", deployer.address);
 
@@ -87,7 +87,7 @@ async function main() {
     network: hre.network.name,
     deployer: deployer.address,
     contracts: {
-      msvToken: msvToken.address,
+      msvpToken: msvpToken.address,
       msvVesting: msvVesting.address
     },
     wallets: {

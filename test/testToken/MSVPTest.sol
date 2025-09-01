@@ -6,14 +6,24 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 
+
 /**
- * @title MSVTokenVesting
- * @dev MetaSoilVerse Token with integrated vesting functionality
+ * @title MSVTokenVesting - ULTRA-FAST TESTNET VERSION
+ * @dev MetaSoilVerse Token with integrated vesting functionality based on precise tokenomics schedule
  * Locked tokens are visible in balance but non-transferable
+ * 
+ * ULTRA-FAST TESTNET TIMING: This version uses minutes instead of days for ultra-fast testing
+ * - 1-minute cliff instead of 6-month cliff
+ * - 1 minute = 1 "month" for vesting calculations (ultra-fast)
+ * - Total vesting period: 61 minutes instead of 61 months
+ * - All tests complete in ~1 hour instead of months
+ * 
+ * PRODUCTION: Use the main MSVP.sol contract with actual day-based timing
  */
-contract MSVTokenVesting is ERC20, Ownable, ReentrancyGuard, Pausable {
+contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable {
     // Token configuration
     uint256 public constant TOTAL_SUPPLY = 100_000_000_000 * 10**18; // 100 billion tokens
+    uint256 public constant AIRDROP_SUPPLY = 50_000_000_000 * 10**18; // 50 billion tokens for airdrop
     uint256 public constant MAX_TAX_RATE = 100; // Maximum 10% tax
     uint256 public constant TAX_DENOMINATOR = 1000; // Tax precision (0.1%)
     
@@ -36,17 +46,18 @@ contract MSVTokenVesting is ERC20, Ownable, ReentrancyGuard, Pausable {
     // Max transaction limit
     uint256 public maxTxAmount = TOTAL_SUPPLY / 100; // 1% of total supply
     
-    // Vesting configuration
-    uint256 public constant MAX_VESTING_DURATION = 365 days; // 1 year maximum
-    uint256 public constant MIN_VESTING_DURATION = 30 days; // 1 month minimum
+    // Vesting configuration based on tokenomics schedule (FAST TESTNET: minutes instead of days)
+    uint256 public constant CLIFF_DURATION = 1 minutes; // 1 minute cliff (instead of 6 months) for fast testing
+    uint256 public constant FIRST_YEAR_UNLOCK_PERCENTAGE = 12; // 1.2% (12/1000)
+    uint256 public constant POST_Q5_UNLOCK_PERCENTAGE = 70; // 7% (70/1000)
+    uint256 public constant FINAL_UNLOCK_PERCENTAGE = 60; // 6% (60/1000)
     
     // Vesting schedule per user
     struct VestingSchedule {
         uint256 totalAmount;           // Total tokens allocated for vesting
         uint256 unlockedAmount;        // Amount already unlocked
-        uint256 startTime;             // Vesting start time
+        uint256 startTime;             // Vesting start time (TGE)
         uint256 endTime;               // Vesting end time
-        uint256 releaseInterval;       // Time between releases (1, 2, 3, 4, or 6 months)
         bool isActive;                 // Whether vesting is active
         bool isAirdrop;                // Whether this is from airdrop
     }
@@ -76,19 +87,27 @@ contract MSVTokenVesting is ERC20, Ownable, ReentrancyGuard, Pausable {
     event MaxTxExclusionUpdated(address account, bool excluded);
     
     // Vesting events
-    event VestingScheduleCreated(address indexed user, uint256 amount, uint256 startTime, uint256 endTime, uint256 releaseInterval);
+    event VestingScheduleCreated(address indexed user, uint256 amount, uint256 startTime, uint256 endTime);
     event TokensUnlocked(address indexed user, uint256 amount, uint256 timestamp);
     event VestingScheduleModified(address indexed user, uint256 newAmount, uint256 timestamp);
     event VestingPaused(uint256 timestamp);
     event VestingUnpaused(uint256 timestamp);
     event EarlyRelease(address indexed user, uint256 amount, uint256 timestamp);
+    event EmergencyUnlockAll(address indexed user, uint256 amount, uint256 timestamp);
+    event VestingScheduleDeactivated(address indexed user, uint256 timestamp);
+    event VestingScheduleReactivated(address indexed user, uint256 timestamp);
+    event VestingScheduleCancelled(address indexed user, uint256 lockedAmount, uint256 timestamp);
+    event AirdropStatusToggled(address indexed user, bool isAirdrop, uint256 timestamp);
+    event VestingScheduleCompleted(address indexed user, uint256 totalAmount, uint256 timestamp);
     event VestingInconsistencyDetected(address indexed user, uint256 recordedAmount, uint256 calculatedAmount, uint256 timestamp);
+    event TokensTransferredForVesting(address indexed user, uint256 amount, uint256 timestamp);
+
     
     constructor(
         address _lpWallet,
         address _marketingWallet,
         address _developmentWallet
-    ) ERC20("MetaSoilVerse", "MSV") {
+    ) ERC20("MetaSoilVerseProtocol", "MSVP") {
         require(_lpWallet != address(0), "Invalid LP wallet");
         require(_marketingWallet != address(0), "Invalid marketing wallet");
         require(_developmentWallet != address(0), "Invalid development wallet");
@@ -127,11 +146,17 @@ contract MSVTokenVesting is ERC20, Ownable, ReentrancyGuard, Pausable {
     
     /**
      * @dev Get transferable balance (base balance + unlocked tokens)
+     * For vesting participants, only unlocked tokens are transferable
      */
     function transferableBalance(address account) public view returns (uint256) {
-        uint256 baseBalance = super.balanceOf(account);
-        uint256 unlockedAmount = getUnlockedAmount(account);
-        return baseBalance + unlockedAmount;
+        if (isParticipant[account]) {
+            // For vesting participants, only unlocked tokens are transferable
+            return getUnlockedAmount(account);
+        } else {
+            // For non-participants, full balance is transferable
+            uint256 baseBalance = super.balanceOf(account);
+            return baseBalance;
+        }
     }
     
     /**
@@ -142,6 +167,7 @@ contract MSVTokenVesting is ERC20, Ownable, ReentrancyGuard, Pausable {
         address to,
         uint256 amount
     ) internal virtual override whenNotPaused {
+
         require(from != address(0), "ERC20: transfer from the zero address");
         require(to != address(0), "ERC20: transfer to the zero address");
         require(amount > 0, "Transfer amount must be greater than zero");
@@ -171,21 +197,26 @@ contract MSVTokenVesting is ERC20, Ownable, ReentrancyGuard, Pausable {
         
         uint256 transferAmount = amount - taxAmount;
         
-        // Transfer tokens
+
+        
+
+        
+        // Transfer tokens to recipient (amount minus tax)
         super._transfer(from, to, transferAmount);
         
-        // Distribute tax if applicable
+        // Transfer tax to contract if applicable
         if (taxAmount > 0) {
-            _distributeTaxes(from, taxAmount);
+            super._transfer(from, address(this), taxAmount);
+            _distributeTaxes(taxAmount);
         }
     }
     
     /**
      * @dev Distribute transfer taxes to different wallets
      */
-    function _distributeTaxes(address from, uint256 taxAmount) internal {
-        // Only distribute if tax rate is greater than 0
-        if (transferTaxRate == 0) {
+    function _distributeTaxes(uint256 taxAmount) internal {
+        // Only distribute if tax amount is greater than 0
+        if (taxAmount == 0) {
             return;
         }
         
@@ -195,7 +226,7 @@ contract MSVTokenVesting is ERC20, Ownable, ReentrancyGuard, Pausable {
         if (lpContributionRate > 0) {
             uint256 lpAmount = (taxAmount * lpContributionRate) / transferTaxRate;
             if (lpAmount > 0) {
-                super._transfer(from, lpWallet, lpAmount);
+                super._transfer(address(this), lpWallet, lpAmount);
                 remainingTax -= lpAmount;
             }
         }
@@ -204,7 +235,7 @@ contract MSVTokenVesting is ERC20, Ownable, ReentrancyGuard, Pausable {
         if (developmentRate > 0) {
             uint256 developmentAmount = (taxAmount * developmentRate) / transferTaxRate;
             if (developmentAmount > 0) {
-                super._transfer(from, developmentWallet, developmentAmount);
+                super._transfer(address(this), developmentWallet, developmentAmount);
                 remainingTax -= developmentAmount;
             }
         }
@@ -213,14 +244,14 @@ contract MSVTokenVesting is ERC20, Ownable, ReentrancyGuard, Pausable {
         if (marketingRate > 0) {
             uint256 marketingAmount = (taxAmount * marketingRate) / transferTaxRate;
             if (marketingAmount > 0) {
-                super._transfer(from, marketingWallet, marketingAmount);
+                super._transfer(address(this), marketingWallet, marketingAmount);
                 remainingTax -= marketingAmount;
             }
         }
         
         // Burn remaining tax
         if (burnRate > 0 && remainingTax > 0) {
-            _burn(from, remainingTax);
+            _burn(address(this), remainingTax);
         }
     }
     
@@ -231,23 +262,27 @@ contract MSVTokenVesting is ERC20, Ownable, ReentrancyGuard, Pausable {
      */
     function createVestingSchedule(
         address user,
-        uint256 amount,
-        uint256 releaseInterval
+        uint256 amount
     ) external onlyOwner {
         require(user != address(0), "Invalid user address");
         require(amount > 0, "Amount must be greater than zero");
         require(!vestingSchedules[user].isActive, "Vesting schedule already exists");
-        require(isValidReleaseInterval(releaseInterval), "Invalid release interval");
+        
+        // ✅ FIX: Transfer tokens to user first
+        require(balanceOf(msg.sender) >= amount, "Insufficient tokens for vesting");
+        _transfer(msg.sender, user, amount);
+        
+        // Emit event for token transfer
+        emit TokensTransferredForVesting(user, amount, block.timestamp);
         
         uint256 startTime = block.timestamp;
-        uint256 endTime = startTime + MAX_VESTING_DURATION;
+        uint256 endTime = startTime + (61 * 1 minutes); // 61 minutes total vesting period (TESTNET: 1 minute per "month")
         
         vestingSchedules[user] = VestingSchedule({
             totalAmount: amount,
             unlockedAmount: 0,
             startTime: startTime,
             endTime: endTime,
-            releaseInterval: releaseInterval,
             isActive: true,
             isAirdrop: true
         });
@@ -259,7 +294,7 @@ contract MSVTokenVesting is ERC20, Ownable, ReentrancyGuard, Pausable {
         
         totalAllocated += amount;
         
-        emit VestingScheduleCreated(user, amount, startTime, endTime, releaseInterval);
+        emit VestingScheduleCreated(user, amount, startTime, endTime);
     }
     
     /**
@@ -267,24 +302,36 @@ contract MSVTokenVesting is ERC20, Ownable, ReentrancyGuard, Pausable {
      */
     function createVestingSchedules(
         address[] calldata users,
-        uint256[] calldata amounts,
-        uint256 releaseInterval
+        uint256[] calldata amounts
     ) external onlyOwner {
         require(users.length == amounts.length, "Arrays length mismatch");
         require(users.length > 0, "Empty arrays");
-        require(isValidReleaseInterval(releaseInterval), "Invalid release interval");
+        
+        // ✅ FIX: Calculate total tokens needed and check balance
+        uint256 totalTokensNeeded = 0;
+        for (uint256 i = 0; i < amounts.length; i++) {
+            if (users[i] != address(0) && amounts[i] > 0 && !vestingSchedules[users[i]].isActive) {
+                totalTokensNeeded += amounts[i];
+            }
+        }
+        require(balanceOf(msg.sender) >= totalTokensNeeded, "Insufficient tokens for bulk vesting");
         
         uint256 startTime = block.timestamp;
-        uint256 endTime = startTime + MAX_VESTING_DURATION;
+        uint256 endTime = startTime + (61 * 1 minutes); // 61 minutes total vesting period (TESTNET: 1 minute per "month")
         
         for (uint256 i = 0; i < users.length; i++) {
             if (users[i] != address(0) && amounts[i] > 0 && !vestingSchedules[users[i]].isActive) {
+                // ✅ FIX: Transfer tokens to user first
+                _transfer(msg.sender, users[i], amounts[i]);
+                
+                // Emit event for token transfer
+                emit TokensTransferredForVesting(users[i], amounts[i], block.timestamp);
+                
                 vestingSchedules[users[i]] = VestingSchedule({
                     totalAmount: amounts[i],
                     unlockedAmount: 0,
                     startTime: startTime,
                     endTime: endTime,
-                    releaseInterval: releaseInterval,
                     isActive: true,
                     isAirdrop: true
                 });
@@ -296,7 +343,7 @@ contract MSVTokenVesting is ERC20, Ownable, ReentrancyGuard, Pausable {
                 
                 totalAllocated += amounts[i];
                 
-                emit VestingScheduleCreated(users[i], amounts[i], startTime, endTime, releaseInterval);
+                emit VestingScheduleCreated(users[i], amounts[i], startTime, endTime);
             }
         }
     }
@@ -319,6 +366,24 @@ contract MSVTokenVesting is ERC20, Ownable, ReentrancyGuard, Pausable {
     }
     
     /**
+     * @dev Emergency function to unlock ALL remaining tokens for a user
+     */
+    function emergencyUnlockAll(address user) external onlyOwner {
+        require(vestingSchedules[user].isActive, "No active vesting schedule");
+        
+        VestingSchedule storage schedule = vestingSchedules[user];
+        uint256 lockedAmount = getLockedAmount(user);
+        
+        require(lockedAmount > 0, "No tokens left to unlock");
+        
+        // Unlock all remaining locked tokens
+        schedule.unlockedAmount = schedule.totalAmount;
+        totalUnlocked += lockedAmount;
+        
+        emit EmergencyUnlockAll(user, lockedAmount, block.timestamp);
+    }
+    
+    /**
      * @dev Modify existing vesting schedule
      */
     function modifyVestingSchedule(address user, uint256 newAmount) external onlyOwner {
@@ -332,6 +397,62 @@ contract MSVTokenVesting is ERC20, Ownable, ReentrancyGuard, Pausable {
         totalAllocated = totalAllocated - oldAmount + newAmount;
         
         emit VestingScheduleModified(user, newAmount, block.timestamp);
+    }
+    
+    /**
+     * @dev Deactivate a vesting schedule (pause vesting without removing)
+     */
+    function deactivateVestingSchedule(address user) external onlyOwner {
+        require(vestingSchedules[user].isActive, "No active vesting schedule");
+        
+        VestingSchedule storage schedule = vestingSchedules[user];
+        schedule.isActive = false;
+        
+        emit VestingScheduleDeactivated(user, block.timestamp);
+    }
+    
+    /**
+     * @dev Reactivate a deactivated vesting schedule
+     */
+    function reactivateVestingSchedule(address user) external onlyOwner {
+        require(!vestingSchedules[user].isActive, "Vesting schedule is already active");
+        require(vestingSchedules[user].startTime != 0, "No vesting schedule exists");
+        
+        VestingSchedule storage schedule = vestingSchedules[user];
+        schedule.isActive = true;
+        
+        emit VestingScheduleReactivated(user, block.timestamp);
+    }
+    
+    /**
+     * @dev Cancel a vesting schedule completely (emergency function)
+     * This will stop all future vesting and mark the schedule as inactive
+     */
+    function cancelVestingSchedule(address user) external onlyOwner {
+        require(vestingSchedules[user].isActive, "No active vesting schedule");
+        
+        VestingSchedule storage schedule = vestingSchedules[user];
+        uint256 lockedAmount = getLockedAmount(user);
+        
+        // Mark as inactive
+        schedule.isActive = false;
+        
+        // Reduce total allocated by the locked amount
+        totalAllocated -= lockedAmount;
+        
+        emit VestingScheduleCancelled(user, lockedAmount, block.timestamp);
+    }
+    
+    /**
+     * @dev Toggle airdrop status for a user
+     */
+    function toggleAirdropStatus(address user) external onlyOwner {
+        require(vestingSchedules[user].isActive, "No active vesting schedule");
+        
+        VestingSchedule storage schedule = vestingSchedules[user];
+        schedule.isAirdrop = !schedule.isAirdrop;
+        
+        emit AirdropStatusToggled(user, schedule.isAirdrop, block.timestamp);
     }
     
     /**
@@ -365,11 +486,34 @@ contract MSVTokenVesting is ERC20, Ownable, ReentrancyGuard, Pausable {
             // Log inconsistency but don't decrease unlocked amount
             emit VestingInconsistencyDetected(user, schedule.unlockedAmount, newUnlockedAmount, block.timestamp);
         }
+        
+        // Check if vesting is complete and auto-deactivate
+        if (newUnlockedAmount >= schedule.totalAmount && schedule.isActive) {
+            // Ensure unlocked amount matches vested amount for complete schedules
+            if (schedule.unlockedAmount < newUnlockedAmount) {
+                uint256 additionalUnlocked = newUnlockedAmount - schedule.unlockedAmount;
+                schedule.unlockedAmount = newUnlockedAmount;
+                totalUnlocked += additionalUnlocked;
+                
+                emit TokensUnlocked(user, additionalUnlocked, block.timestamp);
+            }
+            
+            schedule.isActive = false;
+            emit VestingScheduleCompleted(user, schedule.totalAmount, block.timestamp);
+        }
     }
     
     /**
-     * @dev Get vested amount for a user based on tokenomics schedule
-     * 6-month cliff, then 1.2% unlocks every 4-6 months alternating
+     * @dev Get vested amount for a user based on precise tokenomics schedule (FAST TESTNET VERSION)
+     * Schedule: 1-minute cliff, then alternating unlocks every 3 "months" (3 minutes)
+     * Phase 1 (Minutes 2-19): 1.2% every 3 "months" (3 minutes) = 600M tokens per unlock
+     * Phase 2 (Minutes 22-49): 7% every 3 "months" (3 minutes) = 3.5B tokens per unlock  
+     * Phase 3 (Minutes 52-61): 6% every 3 "months" (3 minutes) = 3B tokens per unlock
+     * 
+     * NOTE: This is FAST TESTNET version with accelerated timing for testing purposes
+     * - 1 minute = 1 "month" for ultra-fast testing
+     * - Total vesting completes in ~61 minutes instead of 61 months
+     * - Production version uses actual months (30 days) instead of minutes
      */
     function getVestedAmount(address user) public view returns (uint256) {
         VestingSchedule storage schedule = vestingSchedules[user];
@@ -384,71 +528,64 @@ contract MSVTokenVesting is ERC20, Ownable, ReentrancyGuard, Pausable {
             return 0;
         }
         
-        // Calculate time since start
+        // Calculate time since start in minutes (1 minute = 1 "month" for FAST TESTNET)
         uint256 timeSinceStart = currentTime - schedule.startTime;
+        uint256 minutesSinceStart = timeSinceStart / 60; // Convert seconds to minutes
+        uint256 monthsSinceStart = minutesSinceStart / 1; // 1 minute = 1 "month" for FAST TESTNET
         
-        // First unlock happens at 6 months from TGE
-        if (timeSinceStart < 180 days) {
+        // 1-minute cliff period (minute 0-1 for FAST TESTNET)
+        if (monthsSinceStart < 2) {
             return 0;
         }
         
-        // Calculate unlock phases after 6 months
-        uint256 timeAfterFirstUnlock = timeSinceStart - 180 days;
+        uint256 totalVested = 0;
         
-        // Each unlock is 1.2% of total supply
-        uint256 unlockPercentage = 12; // 1.2% = 12/1000
-        uint256 unlockAmount = (schedule.totalAmount * unlockPercentage) / 1000;
-        
-        // Calculate how many unlock phases have passed
-        uint256 totalUnlockPhases = 0;
-        
-        // Pattern: First unlock at 6 months, then alternating 4 months, 6 months
-        // Phase 1: 6 months (180 days) - first unlock
-        // Phase 2: 4 months (120 days) - second unlock  
-        // Phase 3: 6 months (180 days) - third unlock
-        // Phase 4: 4 months (120 days) - fourth unlock
-        // etc.
-        
-        // Check if we've passed the first unlock (6 months from TGE)
-        if (timeSinceStart >= 180 days) {
-            totalUnlockPhases++;
+        // Phase 1: First year releases (minutes 2-19) - 1.2% every 3 "months" (3 minutes)
+        if (monthsSinceStart >= 2) {
+            uint256 firstYearUnlocks = 0;
+            if (monthsSinceStart >= 2) firstYearUnlocks++;  // "Month" 2 (2 minutes)
+            if (monthsSinceStart >= 5) firstYearUnlocks++;  // "Month" 5 (5 minutes)
+            if (monthsSinceStart >= 8) firstYearUnlocks++;  // "Month" 8 (8 minutes)
+            if (monthsSinceStart >= 11) firstYearUnlocks++; // "Month" 11 (11 minutes)
+            if (monthsSinceStart >= 14) firstYearUnlocks++; // "Month" 14 (14 minutes)
+            if (monthsSinceStart >= 17) firstYearUnlocks++; // "Month" 17 (17 minutes)
             
-            // Check additional phases
-            uint256 remainingTime = timeAfterFirstUnlock;
-            
-            // Second phase: 4 months
-            if (remainingTime >= 120 days) {
-                totalUnlockPhases++;
-                remainingTime -= 120 days;
-                
-                // Third phase: 6 months
-                if (remainingTime >= 180 days) {
-                    totalUnlockPhases++;
-                    remainingTime -= 180 days;
-                    
-                    // Fourth phase: 4 months
-                    if (remainingTime >= 120 days) {
-                        totalUnlockPhases++;
-                        remainingTime -= 120 days;
-                        
-                        // Continue pattern for remaining phases
-                        uint256 phaseCount = 4;
-                        while (remainingTime > 0 && phaseCount < 30) {
-                            uint256 phaseInterval = (phaseCount % 2 == 0) ? 180 days : 120 days;
-                            if (remainingTime >= phaseInterval) {
-                                totalUnlockPhases++;
-                                remainingTime -= phaseInterval;
-                            } else {
-                                break;
-                            }
-                            phaseCount++;
-                        }
-                    }
-                }
-            }
+            uint256 firstYearAmount = (schedule.totalAmount * FIRST_YEAR_UNLOCK_PERCENTAGE) / 1000;
+            totalVested += firstYearAmount * firstYearUnlocks;
         }
         
-        return unlockAmount * totalUnlockPhases;
+        // Phase 2: Post-Q5 releases (minutes 22-49) - 7% every 3 "months" (3 minutes)
+        if (monthsSinceStart >= 22) {
+            uint256 postQ5Unlocks = 0;
+            for (uint256 month = 22; month <= 49; month += 3) {
+                if (monthsSinceStart >= month) {
+                    postQ5Unlocks++;
+                }
+            }
+            
+            uint256 postQ5Amount = (schedule.totalAmount * POST_Q5_UNLOCK_PERCENTAGE) / 1000;
+            totalVested += postQ5Amount * postQ5Unlocks;
+        }
+        
+        // Phase 3: Final releases (minutes 52-61) - 6% every 3 "months" (3 minutes)
+        if (monthsSinceStart >= 52) {
+            uint256 finalUnlocks = 0;
+            for (uint256 month = 52; month <= 61; month += 3) {
+                if (monthsSinceStart >= month) {
+                    finalUnlocks++;
+                }
+            }
+            
+            uint256 finalAmount = (schedule.totalAmount * FINAL_UNLOCK_PERCENTAGE) / 1000;
+            totalVested += finalAmount * finalUnlocks;
+        }
+        
+        // Ensure we don't exceed total amount
+        if (totalVested > schedule.totalAmount) {
+            totalVested = schedule.totalAmount;
+        }
+        
+        return totalVested;
     }
     
     /**
@@ -467,8 +604,12 @@ contract MSVTokenVesting is ERC20, Ownable, ReentrancyGuard, Pausable {
             return 0;
         }
         
+        // Use the maximum of vested (time-based) or unlocked (stored, includes emergency unlocks)
         uint256 totalVested = getVestedAmount(user);
-        uint256 lockedAmount = schedule.totalAmount - totalVested;
+        uint256 userUnlocked = schedule.unlockedAmount;
+        uint256 maxUnlocked = totalVested > userUnlocked ? totalVested : userUnlocked;
+        
+        uint256 lockedAmount = schedule.totalAmount - maxUnlocked;
         return lockedAmount > 0 ? lockedAmount : 0;
     }
     
@@ -480,7 +621,6 @@ contract MSVTokenVesting is ERC20, Ownable, ReentrancyGuard, Pausable {
         uint256 unlockedAmount,
         uint256 startTime,
         uint256 endTime,
-        uint256 releaseInterval,
         bool isActive,
         bool isAirdrop
     ) {
@@ -490,19 +630,12 @@ contract MSVTokenVesting is ERC20, Ownable, ReentrancyGuard, Pausable {
             schedule.unlockedAmount,
             schedule.startTime,
             schedule.endTime,
-            schedule.releaseInterval,
             schedule.isActive,
             schedule.isAirdrop
         );
     }
     
-    /**
-     * @dev Check if release interval is valid
-     */
-    function isValidReleaseInterval(uint256 interval) public pure returns (bool) {
-        return interval == 30 days || interval == 60 days || interval == 90 days || 
-               interval == 120 days || interval == 180 days;
-    }
+
     
     /**
      * @dev Get all participants
@@ -516,6 +649,26 @@ contract MSVTokenVesting is ERC20, Ownable, ReentrancyGuard, Pausable {
      */
     function getParticipantCount() external view returns (uint256) {
         return participants.length;
+    }
+    
+    /**
+     * @dev Check if a vesting schedule is complete (all tokens unlocked)
+     */
+    function isVestingComplete(address user) external view returns (bool) {
+        VestingSchedule storage schedule = vestingSchedules[user];
+        
+        if (schedule.startTime == 0) {
+            return false;
+        }
+        
+        // For active schedules, check current vested amount
+        if (schedule.isActive) {
+            uint256 vestedAmount = getVestedAmount(user);
+            return vestedAmount >= schedule.totalAmount;
+        }
+        
+        // For deactivated schedules, check if they were completed before deactivation
+        return schedule.unlockedAmount >= schedule.totalAmount;
     }
     
     /**
@@ -688,5 +841,41 @@ contract MSVTokenVesting is ERC20, Ownable, ReentrancyGuard, Pausable {
      */
     function isMaxTxExcluded(address account) external view returns (bool) {
         return isExcludedFromMaxTx[account];
+    }
+    
+    /**
+     * @dev Check vesting requirements for bulk operations (view function)
+     * @param users Array of user addresses
+     * @param amounts Array of token amounts
+     * @return totalTokensNeeded Total tokens required for the operation
+     * @return adminBalance Current admin token balance
+     * @return canProceed Whether the operation can proceed
+     * @return validEntries Number of valid vesting entries
+     */
+    function checkVestingRequirements(
+        address[] calldata users,
+        uint256[] calldata amounts
+    ) external view returns (
+        uint256 totalTokensNeeded,
+        uint256 adminBalance,
+        bool canProceed,
+        uint256 validEntries
+    ) {
+        require(users.length == amounts.length, "Arrays length mismatch");
+        
+        totalTokensNeeded = 0;
+        validEntries = 0;
+        
+        for (uint256 i = 0; i < amounts.length; i++) {
+            if (users[i] != address(0) && amounts[i] > 0 && !vestingSchedules[users[i]].isActive) {
+                totalTokensNeeded += amounts[i];
+                validEntries++;
+            }
+        }
+        
+        adminBalance = balanceOf(msg.sender);
+        canProceed = adminBalance >= totalTokensNeeded;
+        
+        return (totalTokensNeeded, adminBalance, canProceed, validEntries);
     }
 } 

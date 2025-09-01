@@ -26,27 +26,27 @@ async function main() {
   console.log("   Marketing Wallet:", marketingWallet);
   console.log("   Development Wallet:", developmentWallet);
 
-  // Deploy the MSVTokenVesting contract
-  console.log("\n🔨 Deploying MSVTokenVesting contract...");
-  const MSVTokenVesting = await ethers.getContractFactory("MSVTokenVesting");
+  // Deploy the MSVP contract
+  console.log("\n🔨 Deploying MSVP contract...");
+  const MSVP = await ethers.getContractFactory("MSVP");
   
-  const msvToken = await MSVTokenVesting.deploy(
+  const msvpToken = await MSVP.deploy(
     lpWallet,
     marketingWallet,
     developmentWallet
   );
 
   console.log("⏳ Waiting for deployment confirmation...");
-  await msvToken.waitForDeployment();
+  await msvpToken.waitForDeployment();
 
-  const contractAddress = await msvToken.getAddress();
-  console.log("✅ MSVTokenVesting deployed to:", contractAddress);
+  const contractAddress = await msvpToken.getAddress();
+  console.log("✅ MSVP deployed to:", contractAddress);
 
   // Get contract information
-  const name = await msvToken.name();
-  const symbol = await msvToken.symbol();
-  const totalSupply = await msvToken.totalSupply();
-  const owner = await msvToken.owner();
+  const name = await msvpToken.name();
+  const symbol = await msvpToken.symbol();
+  const totalSupply = await msvpToken.totalSupply();
+  const owner = await msvpToken.owner();
 
   console.log("\n📊 Contract Information:");
   console.log("   Name:", name);

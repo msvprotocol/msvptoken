@@ -7,10 +7,10 @@ async function main() {
     console.log("📋 Contract Address:", contractAddress);
     
     // Get the contract factory
-    const MSVTokenVesting = await ethers.getContractFactory("MSVTokenVesting");
+    const MSVP = await ethers.getContractFactory("MSVP");
     
     // Attach to the deployed contract
-    const contract = MSVTokenVesting.attach(contractAddress);
+    const contract = MSVP.attach(contractAddress);
     
     try {
         // Get the owner

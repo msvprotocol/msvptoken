@@ -1,0 +1,33 @@
+# MSVP Token Airdrop with Vesting Schedule CSV Sample
+# This file shows the complete vesting schedule for each participant
+# Format: address,amount,cliff_end,phase1_end,phase2_end,phase3_end,vesting_complete
+# All dates are relative to deployment (TGE = Token Generation Event)
+# 
+# Vesting Schedule:
+# - Cliff: 6 months (no tokens unlocked)
+# - Phase 1 (Months 7-19): 1.2% every 3 months = 5.2% total
+# - Phase 2 (Months 22-49): 7% every 3 months = 65.2% total  
+# - Phase 3 (Months 52-61): 6% every 3 months = 29.6% total
+# - Total: 100% unlocked by month 61
+
+address,amount,cliff_end,phase1_end,phase2_end,phase3_end,vesting_complete
+0x1234567890123456789012345678901234567890,1000000,6 months,19 months,49 months,61 months,61 months
+0x2345678901234567890123456789012345678901,2500000,6 months,19 months,49 months,61 months,61 months
+0x3456789012345678901234567890123456789012,5000000,6 months,19 months,49 months,61 months,61 months
+0x4567890123456789012345678901234567890123,7500000,6 months,19 months,49 months,61 months,61 months
+0x5678901234567890123456789012345678901234,10000000,6 months,19 months,49 months,61 months,61 months
+0x6789012345678901234567890123456789012345,15000000,6 months,19 months,49 months,61 months,61 months
+0x7890123456789012345678901234567890123456,20000000,6 months,19 months,49 months,61 months,61 months
+0x8901234567890123456789012345678901234567,25000000,6 months,19 months,49 months,61 months,61 months
+0x9012345678901234567890123456789012345678,30000000,6 months,19 months,49 months,61 months,61 months
+0xa123456789012345678901234567890123456789,50000000,6 months,19 months,49 months,61 months,61 months
+0xb123456789012345678901234567890123456789,75000000,6 months,19 months,49 months,61 months,61 months
+0xc123456789012345678901234567890123456789,100000000,6 months,19 months,49 months,61 months,61 months
+0xd123456789012345678901234567890123456789,150000000,6 months,19 months,49 months,61 months,61 months
+0xe123456789012345678901234567890123456789,200000000,6 months,19 months,49 months,61 months,61 months
+0xf123456789012345678901234567890123456789,250000000,6 months,19 months,49 months,61 months,61 months
+0x1a12345678901234567890123456789012345678,300000000,6 months,19 months,49 months,61 months,61 months
+0x2b12345678901234567890123456789012345678,400000000,6 months,19 months,49 months,61 months,61 months
+0x3c12345678901234567890123456789012345678,500000000,6 months,19 months,49 months,61 months,61 months
+0x4d12345678901234567890123456789012345678,750000000,6 months,19 months,49 months,61 months,61 months
+0x5e12345678901234567890123456789012345678,1000000000,6 months,19 months,49 months,61 months,61 months 

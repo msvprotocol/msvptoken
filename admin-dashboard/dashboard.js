@@ -1,5 +1,5 @@
-// MSV Token Vesting Admin Dashboard
-// This file handles all interactions with the MSVTokenVesting smart contract
+// MSVP Token Vesting Admin Dashboard
+// This file handles all interactions with the MSVPP smart contract
 
 // Global variables
 let provider;
@@ -24,9 +24,10 @@ const CONTRACT_ABI = [
     "function allowance(address, address) view returns (uint256)",
     
     // Vesting Functions
-    "function createVestingSchedule(address, uint256, uint256)",
-    "function createVestingSchedules(address[], uint256[], uint256)",
+    "function createVestingSchedule(address, uint256)",
+    "function createVestingSchedules(address[], uint256[])",
     "function earlyRelease(address, uint256)",
+    "function emergencyUnlockAll(address)",
     "function modifyVestingSchedule(address, uint256)",
     "function updateUnlockedAmounts()",
     "function updateUnlockedAmountsForUser(address)",
@@ -85,6 +86,7 @@ const CONTRACT_ABI = [
     "event VestingScheduleCreated(address indexed user, uint256 amount, uint256 startTime, uint256 endTime, uint256 releaseInterval)",
     "event TokensUnlocked(address indexed user, uint256 amount, uint256 timestamp)",
     "event EarlyRelease(address indexed user, uint256 amount, uint256 timestamp)",
+    "event EmergencyUnlockAll(address indexed user, uint256 amount, uint256 timestamp)",
     "event VestingScheduleModified(address indexed user, uint256 newAmount, uint256 timestamp)",
     "event VestingInconsistencyDetected(address indexed user, uint256 recordedAmount, uint256 calculatedAmount, uint256 timestamp)",
     "event TransferTaxUpdated(uint256 newRate)",
@@ -125,7 +127,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Initialize dashboard
 function initializeDashboard() {
-    console.log('Initializing MSV Token Vesting Admin Dashboard...');
+    console.log('Initializing MSVP Token Vesting Admin Dashboard...');
     loadContractAddress();
     updateWalletStatus();
     setupCSVUpload();
@@ -144,6 +146,7 @@ function setupEventListeners() {
     document.getElementById('createSingleVesting').addEventListener('click', createSingleVesting);
     document.getElementById('createBulkVesting').addEventListener('click', createBulkVesting);
     document.getElementById('earlyRelease').addEventListener('click', earlyRelease);
+    document.getElementById('emergencyUnlockAll').addEventListener('click', emergencyUnlockAll);
     document.getElementById('modifyVesting').addEventListener('click', modifyVestingSchedule);
     
     // Tax management
@@ -532,9 +535,8 @@ async function createSingleVesting() {
     try {
         showLoading(true);
         const amountWei = ethers.utils.parseEther(amount);
-        const intervalSeconds = parseInt(interval) * 24 * 60 * 60;
         
-        const tx = await contract.createVestingSchedule(address, amountWei, intervalSeconds);
+        const tx = await contract.createVestingSchedule(address, amountWei);
         await tx.wait();
         
         showAlert('Vesting schedule created successfully!', 'success');
@@ -565,7 +567,6 @@ async function createBulkVesting() {
         
         const addresses = [];
         const amounts = [];
-        const intervalSeconds = parseInt(interval) * 24 * 60 * 60;
         
         for (const row of csvData) {
             if (row.address && row.amount) {
@@ -579,7 +580,7 @@ async function createBulkVesting() {
             return;
         }
         
-        const tx = await contract.createVestingSchedules(addresses, amounts, intervalSeconds);
+        const tx = await contract.createVestingSchedules(addresses, amounts);
         await tx.wait();
         
         showAlert(`Created ${addresses.length} vesting schedules successfully!`, 'success');
@@ -619,6 +620,46 @@ async function earlyRelease() {
     } catch (error) {
         console.error('Error performing early release:', error);
         showAlert('Failed to perform early release: ' + error.message, 'danger');
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function emergencyUnlockAll() {
+    if (!checkConnection()) return;
+    
+    const address = document.getElementById('emergencyUnlockAddress').value;
+    
+    if (!address) {
+        showAlert('Please enter a valid address', 'warning');
+        return;
+    }
+    
+    // Show confirmation dialog
+    if (!confirm(`⚠️ EMERGENCY ACTION ⚠️\n\nThis will unlock ALL remaining tokens for:\n${address}\n\nThis action cannot be undone. Are you sure?`)) {
+        return;
+    }
+    
+    try {
+        showLoading(true);
+        
+        // Check if user has locked tokens first
+        const lockedAmount = await contract.getLockedAmount(address);
+        if (lockedAmount.eq(0)) {
+            showAlert('This address has no locked tokens to unlock', 'warning');
+            return;
+        }
+        
+        const tx = await contract.emergencyUnlockAll(address);
+        await tx.wait();
+        
+        const amountFormatted = ethers.utils.formatEther(lockedAmount);
+        showAlert(`Emergency unlock completed! ${amountFormatted} tokens unlocked for ${address}`, 'success');
+        document.getElementById('emergencyUnlockAddress').value = '';
+        refreshStatistics();
+    } catch (error) {
+        console.error('Error performing emergency unlock:', error);
+        showAlert('Failed to perform emergency unlock: ' + error.message, 'danger');
     } finally {
         showLoading(false);
     }
@@ -1020,31 +1061,31 @@ async function lookupParticipant() {
             <div class="row">
                 <div class="col-6">
                     <strong>Total Vesting Amount:</strong><br>
-                    ${ethers.utils.formatEther(totalAmount)} MSV
+                    ${ethers.utils.formatEther(totalAmount)} MSVP
                 </div>
                 <div class="col-6">
                     <strong>Unlocked Amount:</strong><br>
-                    ${ethers.utils.formatEther(unlockedAmount)} MSV
+                    ${ethers.utils.formatEther(unlockedAmount)} MSVP
                 </div>
             </div>
             <div class="row mt-2">
                 <div class="col-6">
                     <strong>Base Balance (Held):</strong><br>
-                    ${ethers.utils.formatEther(baseBalance)} MSV
+                    ${ethers.utils.formatEther(baseBalance)} MSVP
                 </div>
                 <div class="col-6">
                     <strong>Transferable Balance:</strong><br>
-                    ${ethers.utils.formatEther(transferableBalance)} MSV
+                    ${ethers.utils.formatEther(transferableBalance)} MSVP
                 </div>
             </div>
             <div class="row mt-2">
                 <div class="col-6">
                     <strong>Currently Locked:</strong><br>
-                    ${ethers.utils.formatEther(lockedAmount)} MSV
+                    ${ethers.utils.formatEther(lockedAmount)} MSVP
                 </div>
                 <div class="col-6">
                     <strong>Vested Amount:</strong><br>
-                    ${ethers.utils.formatEther(vestedAmount)} MSV
+                    ${ethers.utils.formatEther(vestedAmount)} MSVP
                 </div>
             </div>
             <div class="row mt-2">

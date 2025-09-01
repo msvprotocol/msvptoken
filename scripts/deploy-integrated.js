@@ -20,17 +20,17 @@ async function main() {
 
   // Deploy Integrated MSV Token with Vesting
   console.log("\n🔧 Deploying MSV Token with Integrated Vesting...");
-  const MSVTokenVesting = await ethers.getContractFactory("MSVTokenVesting");
-  const msvToken = await MSVTokenVesting.deploy(lpWallet, marketingWallet, developmentWallet);
-  await msvToken.deployed();
+  const MSVP = await ethers.getContractFactory("MSVP");
+  const msvpToken = await MSVP.deploy(lpWallet, marketingWallet, developmentWallet);
+  await msvpToken.deployed();
 
-  console.log("✅ MSV Token with Integrated Vesting deployed to:", msvToken.address);
-  console.log("   Token Name:", await msvToken.name());
-  console.log("   Token Symbol:", await msvToken.symbol());
-  console.log("   Total Supply:", ethers.utils.formatEther(await msvToken.totalSupply()));
+  console.log("✅ MSV Token with Integrated Vesting deployed to:", msvpToken.address);
+  console.log("   Token Name:", await msvpToken.name());
+  console.log("   Token Symbol:", await msvpToken.symbol());
+  console.log("   Total Supply:", ethers.utils.formatEther(await msvpToken.totalSupply()));
 
   // Get initial tax configuration
-  const taxBreakdown = await msvToken.getTaxBreakdown();
+  const taxBreakdown = await msvpToken.getTaxBreakdown();
   console.log("\n📊 Initial Tax Configuration:");
   console.log("   Transfer Tax Rate:", taxBreakdown.transferTax.toString(), "(5%)");
   console.log("   LP Contribution Rate:", taxBreakdown.lpContribution.toString(), "(2%)");
@@ -49,7 +49,7 @@ async function main() {
 
   console.log("\n🎉 Deployment completed successfully!");
   console.log("\n📋 Contract Address:");
-  console.log("   MSV Token with Vesting:", msvToken.address);
+  console.log("   MSV Token with Vesting:", msvpToken.address);
   console.log("   Deployer:", deployer.address);
 
   console.log("\n🔗 Next Steps:");
@@ -64,7 +64,7 @@ async function main() {
     network: hre.network.name,
     deployer: deployer.address,
     contract: {
-      msvTokenVesting: msvToken.address
+      msvpTokenVesting: msvpToken.address
     },
     wallets: {
       lpWallet: lpWallet,
@@ -72,7 +72,7 @@ async function main() {
       developmentWallet: developmentWallet
     },
     configuration: {
-      totalSupply: ethers.utils.formatEther(await msvToken.totalSupply()),
+      totalSupply: ethers.utils.formatEther(await msvpToken.totalSupply()),
       taxRates: {
         transferTax: taxBreakdown.transferTax.toString(),
         lpContribution: taxBreakdown.lpContribution.toString(),
