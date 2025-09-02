@@ -1,53 +1,53 @@
 const { ethers } = require("hardhat");
 
 async function main() {
-  console.log("🚀 Starting MSV Token and Vesting deployment...");
+  console.log(" Starting MSV Token and Vesting deployment...");
 
   // Get deployer account
   const [deployer] = await ethers.getSigners();
-  console.log("📝 Deploying contracts with account:", deployer.address);
-  console.log("💰 Account balance:", (await deployer.getBalance()).toString());
+  console.log(" Deploying contracts with account:", deployer.address);
+  console.log(" Account balance:", (await deployer.getBalance()).toString());
 
   // Deploy wallet addresses (replace with actual addresses for mainnet)
   const lpWallet = "0x1234567890123456789012345678901234567890"; // Replace with actual LP wallet
   const marketingWallet = "0x2345678901234567890123456789012345678901"; // Replace with actual marketing wallet
   const referralWallet = "0x3456789012345678901234567890123456789012"; // Replace with actual referral wallet
 
-  console.log("📋 Wallet addresses:");
+  console.log(" Wallet addresses:");
   console.log("   LP Wallet:", lpWallet);
   console.log("   Marketing Wallet:", marketingWallet);
   console.log("   Referral Wallet:", referralWallet);
 
   // Deploy MSV Token
-  console.log("\n🔧 Deploying MSV Token...");
+  console.log("\n Deploying MSV Token...");
   const MSVToken = await ethers.getContractFactory("MSVToken");
   const msvpToken = await MSVToken.deploy(lpWallet, marketingWallet, referralWallet);
   await msvpToken.deployed();
 
-  console.log("✅ MSV Token deployed to:", msvpToken.address);
+  console.log("✔ MSV Token deployed to:", msvpToken.address);
   console.log("   Token Name:", await msvpToken.name());
   console.log("   Token Symbol:", await msvpToken.symbol());
   console.log("   Total Supply:", ethers.utils.formatEther(await msvpToken.totalSupply()));
 
   // Deploy Vesting Contract
-  console.log("\n🔧 Deploying MSV Vesting Contract...");
+  console.log("\n Deploying MSV Vesting Contract...");
   const MSVVesting = await ethers.getContractFactory("MSVVesting");
   const msvVesting = await MSVVesting.deploy(msvpToken.address);
   await msvVesting.deployed();
 
-  console.log("✅ MSV Vesting deployed to:", msvVesting.address);
+  console.log("✔ MSV Vesting deployed to:", msvVesting.address);
 
   // Transfer tokens to vesting contract (example: 20% of total supply for airdrop)
   const totalSupply = await msvpToken.totalSupply();
   const airdropAmount = totalSupply.mul(20).div(100); // 20% for airdrop
 
-  console.log("\n💰 Transferring tokens to vesting contract...");
+  console.log("\n Transferring tokens to vesting contract...");
   console.log("   Airdrop Amount:", ethers.utils.formatEther(airdropAmount));
 
   const transferTx = await msvpToken.transfer(msvVesting.address, airdropAmount);
   await transferTx.wait();
 
-  console.log("✅ Tokens transferred to vesting contract");
+  console.log("✔ Tokens transferred to vesting contract");
 
   // Verify token balance in vesting contract
   const vestingBalance = await msvpToken.balanceOf(msvVesting.address);
@@ -55,7 +55,7 @@ async function main() {
 
   // Get initial tax configuration
   const taxBreakdown = await msvpToken.getTaxBreakdown();
-  console.log("\n📊 Initial Tax Configuration:");
+  console.log("\n Initial Tax Configuration:");
   console.log("   Transfer Tax Rate:", taxBreakdown.transferTax.toString(), "(5%)");
   console.log("   LP Contribution Rate:", taxBreakdown.lpContribution.toString(), "(2%)");
   console.log("   Referral Reward Rate:", taxBreakdown.referralReward.toString(), "(1.5%)");
@@ -63,19 +63,19 @@ async function main() {
   console.log("   Burn Rate:", taxBreakdown.burn.toString(), "(0.5%)");
 
   // Get vesting configuration
-  console.log("\n📅 Vesting Configuration:");
+  console.log("\n Vesting Configuration:");
   console.log("   Cliff Duration: 90 days (3 months)");
   console.log("   Unlock Interval: 90 days (quarterly)");
   console.log("   Unlock Percentage: 1.2% per quarter");
   console.log("   Total Vesting Period: ~6.25 years (100% / 1.2% = ~83 quarters)");
 
-  console.log("\n🎉 Deployment completed successfully!");
-  console.log("\n📋 Contract Addresses:");
+  console.log("\n Deployment completed successfully!");
+  console.log("\n Contract Addresses:");
   console.log("   MSV Token:", msvpToken.address);
   console.log("   MSV Vesting:", msvVesting.address);
   console.log("   Deployer:", deployer.address);
 
-  console.log("\n🔗 Next Steps:");
+  console.log("\n Next Steps:");
   console.log("   1. Verify contracts on BSCScan");
   console.log("   2. Set up admin dashboard");
   console.log("   3. Upload CSV with airdrop recipients");
@@ -115,7 +115,7 @@ async function main() {
     JSON.stringify(deploymentInfo, null, 2)
   );
 
-  console.log(`\n💾 Deployment info saved to deployment-${hre.network.name}-${Date.now()}.json`);
+  console.log(`\n Deployment info saved to deployment-${hre.network.name}-${Date.now()}.json`);
 }
 
 main()

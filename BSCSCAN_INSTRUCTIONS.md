@@ -5,7 +5,7 @@ The MSV Token Vesting contract is an integrated BEP20 token with built-in vestin
 
 
 
-## 📊 READ FUNCTIONS (No Gas Required)
+##  READ FUNCTIONS (No Gas Required)
 
 ### Token Information
 ```
@@ -435,7 +435,7 @@ burnAdminRights()
 1. Connect owner wallet
 2. Click "Write" button
 3. Confirm transaction
-**⚠️ WARNING**: This is irreversible!
+** WARNING**: This is irreversible!
 
 
 
@@ -494,7 +494,7 @@ allowance(address owner, address spender) → uint256
 
 
 
-## 📋 COMMON OPERATIONS
+##  COMMON OPERATIONS
 
 ### For Token Holders:
 1. **Check Balance**: Use `balanceOf()` to see total tokens
@@ -516,7 +516,7 @@ allowance(address owner, address spender) → uint256
 
 
 
-## ⚠️ IMPORTANT NOTES
+##  IMPORTANT NOTES
 
 1. **Gas Fees**: All write operations require BNB for gas fees
 2. **Owner Only**: Many functions require owner wallet connection

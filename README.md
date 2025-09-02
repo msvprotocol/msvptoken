@@ -160,25 +160,6 @@ npm run deploy:mainnet:integrated
 - **Vested Amount**: Calculated vested amount
 - **Total Balance**: Display balance including locked tokens
 
-## Tokenomics-Based Vesting Schedule
-
-### Example: User with 10,000 MSV tokens
-
-| Phase | Time After TGE | Unlock Amount (1.2%) | Cumulative | Notes |
-|-------|----------------|----------------------|------------|-------|
-| 0 | 0 months | 0 MSV | 0 MSV | **6-Month Cliff Period** |
-| 1 | 6 months | 120 MSV | 120 MSV | First unlock |
-| 2 | 10 months | 120 MSV | 240 MSV | 4 months later |
-| 3 | 16 months | 120 MSV | 360 MSV | 6 months later |
-| 4 | 20 months | 120 MSV | 480 MSV | 4 months later |
-| 5 | 26 months | 120 MSV | 600 MSV | 6 months later |
-| 6 | 30 months | 120 MSV | 720 MSV | 4 months later |
-| 7 | 36 months | 120 MSV | 840 MSV | 6 months later |
-| 8 | 40 months | 120 MSV | 960 MSV | 4 months later |
-| 9 | 46 months | 120 MSV | 1,080 MSV | 6 months later |
-| 10 | 50 months | 120 MSV | 1,200 MSV | 4 months later |
-| ... | ... | ... | ... | Continues for 30+ phases |
-| 30+ | 10+ years | 120 MSV | 3,600+ MSV | Full vesting completion |
 
 ### Key Features:
 - **6-Month Cliff**: No tokens unlocked before 6 months
@@ -210,7 +191,7 @@ npm run deploy:mainnet:integrated
 - **Function**: `modifyVestingSchedule(address user, uint256 newAmount)`
 - **Restrictions**: New amount cannot be less than already unlocked tokens
 
-### 🛠️ **Vesting Schedule Management Functions**
+###  **Vesting Schedule Management Functions**
 
 #### Deactivate Vesting Schedule
 - **Purpose**: Temporarily pause a vesting schedule without removing it
@@ -313,11 +294,11 @@ await msvpToken.setTaxExclusion(address, true);
 #### Integrated Token
 ```javascript
 // Create individual vesting schedule (automatic start)
-// ✅ FIXED: Now transfers tokens to user + creates vesting schedule
+// ✔ FIXED: Now transfers tokens to user + creates vesting schedule
 await msvpToken.createVestingSchedule(userAddress, amount);
 
 // Create batch vesting schedules from CSV
-// ✅ FIXED: Now transfers tokens to all users + creates vesting schedules
+// ✔ FIXED: Now transfers tokens to all users + creates vesting schedules
 await msvpToken.createVestingSchedules(addresses, amounts);
 
 // Check vesting requirements before bulk operations (view function)
@@ -336,7 +317,7 @@ await msvpToken.emergencyUnlockAll(userAddress);
 // Modify vesting schedule (can increase or decrease total allocation)
 await msvpToken.modifyVestingSchedule(userAddress, newAmount);
 
-// 🛠️ Vesting Schedule Management
+//  Vesting Schedule Management
 await msvpToken.deactivateVestingSchedule(userAddress); // Pause vesting
 await msvpToken.reactivateVestingSchedule(userAddress); // Resume vesting
 await msvpToken.cancelVestingSchedule(userAddress); // Cancel completely (emergency)
@@ -350,7 +331,7 @@ await msvpToken.updateUnlockedAmountsForUser(userAddress); // Single user
 await msvpToken.updateUnlockedAmounts(); // All participants
 
 // Check balances
-const baseBalance = await msvpToken.baseBalanceOf(userAddress);
+const baseBalance = await msvpToken.balanceOf(userAddress);
 const transferableBalance = await msvpToken.transferableBalance(userAddress);
 const lockedAmount = await msvpToken.getLockedAmount(userAddress);
 ```
@@ -495,12 +476,6 @@ function balanceOf(address account) public view override returns (uint256) {
 - **Purpose**: Shows complete token ownership for display in wallets
 - **Example**: If user has 1,000 regular tokens + 10,000 locked tokens = **11,000 tokens displayed**
 
-#### 2. **Base Balance (`baseBalanceOf`)**
-```solidity
-function baseBalanceOf(address account) public view returns (uint256) {
-    return super.balanceOf(account);
-}
-```
 
 **What this represents:**
 - **Actual ERC20 tokens** held in the wallet
@@ -544,9 +519,18 @@ The contract implements the exact vesting schedule:
 | Q5        | 19        | 1.2          | Extended release | 600,000,000 | 6                | 3,000,000,000        |
 | Q6        | 22        | 7            | Post-Q5 unlock | 3,500,000,000 | 13               | 6,500,000,000        |
 | Q7        | 25        | 7            | Post-Q5 unlock | 3,500,000,000 | 20               | 10,000,000,000       |
-| ...       | ...       | ...          | Continues... | ... | ... | ... |
-| Q19       | 61        | 6            | Final unlock | 3,000,000,000 | 100              | 50,000,000,000       |
-
+| Q8        | 28        | 7            | Post-Q5 unlock | 3,500,000,000 | 27               | 13,500,000,000       |
+| Q9        | 31        | 7            | Post-Q5 unlock | 3,500,000,000 | 34               | 17,000,000,000       |
+| Q10       | 34        | 7            | Post-Q5 unlock | 3,500,000,000 | 41               | 20,500,000,000       |
+| Q11       | 37        | 7            | Post-Q5 unlock | 3,500,000,000 | 48               | 24,000,000,000       |
+| Q12       | 40        | 7            | Post-Q5 unlock | 3,500,000,000 | 55               | 27,500,000,000       |
+| Q13       | 43        | 7            | Post-Q5 unlock | 3,500,000,000 | 62               | 31,000,000,000       |
+| Q14       | 46        | 7            | Post-Q5 unlock | 3,500,000,000 | 69               | 34,500,000,000       |
+| Q15       | 49        | 7            | Post-Q5 unlock | 3,500,000,000 | 76               | 38,000,000,000       |
+| Q16       | 52        | 6            | Final period   | 3,000,000,000 | 82               | 41,000,000,000       |
+| Q17       | 55        | 6            | Final period   | 3,000,000,000 | 88               | 44,000,000,000       |
+| Q18       | 58        | 6            | Final period   | 3,000,000,000 | 94               | 47,000,000,000       |
+| Q19       | 61        | 6            | Final unlock   | 3,000,000,000 | 100              | 50,000,000,000       |
 ### Balance Update Mechanism
 
 The contract automatically updates unlocked amounts during:
@@ -597,7 +581,6 @@ Let's say Alice has an airdrop allocation:
 ```
 Alice's Address: 0x123...
 ├── Display Balance (balanceOf): 10,000,000 tokens
-├── Base Balance (baseBalanceOf): 0 tokens  
 ├── Transferable Balance: 0 tokens
 ├── Locked Amount: 10,000,000 tokens
 └── Unlocked Amount: 0 tokens (cliff period)
@@ -608,7 +591,7 @@ Alice's Address: 0x123...
 Alice's Address: 0x123...
 ├── Display Balance: 10,000,000 tokens (unchanged)
 ├── Base Balance: 0 tokens
-├── Transferable Balance: 120,000 tokens ✅
+├── Transferable Balance: 120,000 tokens ✔
 ├── Locked Amount: 9,880,000 tokens
 └── Unlocked Amount: 120,000 tokens (1.2% unlocked)
 ```
@@ -618,7 +601,7 @@ Alice's Address: 0x123...
 Alice's Address: 0x123...
 ├── Display Balance: 10,001,000 tokens
 ├── Base Balance: 1,000 tokens
-├── Transferable Balance: 121,000 tokens ✅
+├── Transferable Balance: 121,000 tokens ✔
 ├── Locked Amount: 9,880,000 tokens  
 └── Unlocked Amount: 120,000 tokens
 ```
@@ -736,15 +719,15 @@ The contract implements a sophisticated tokenomics-based vesting system:
 
 ### Test Coverage
 The system includes comprehensive tests covering:
-- ✅ 6-Month cliff period enforcement
-- ✅ 1.2% unlock pattern accuracy
-- ✅ Alternating 4-6 month intervals
-- ✅ Large-scale 50B token distribution
-- ✅ 30+ unlock phases over 10 years
-- ✅ Cumulative unlock tracking
-- ✅ Transfer restrictions during vesting
-- ✅ Early release with tokenomics constraints
-- ✅ Gas optimization for large operations
+- ✔ 6-Month cliff period enforcement
+- ✔ 1.2% unlock pattern accuracy
+- ✔ Alternating 4-6 month intervals
+- ✔ Large-scale 50B token distribution
+- ✔ 30+ unlock phases over 10 years
+- ✔ Cumulative unlock tracking
+- ✔ Transfer restrictions during vesting
+- ✔ Early release with tokenomics constraints
+- ✔ Gas optimization for large operations
 
 ## Important Notes
 
@@ -811,7 +794,7 @@ For support and questions:
 - **v2.0.0**: Enhanced balance management, gas optimization, automatic vesting, high precision calculations, inconsistency detection
 - **v1.0.0**: Initial release with basic token and vesting system
 
-## 📝 Changelog
+##  Changelog
 
 ### Version 2.1.0 - Vesting Management & Auto-Deactivation
 

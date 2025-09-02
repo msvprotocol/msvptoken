@@ -16,7 +16,6 @@ const CONTRACT_ABI = [
     "function decimals() view returns (uint8)",
     "function totalSupply() view returns (uint256)",
     "function balanceOf(address) view returns (uint256)",
-    "function baseBalanceOf(address) view returns (uint256)",
     "function transferableBalance(address) view returns (uint256)",
     "function transfer(address, uint256) returns (bool)",
     "function transferFrom(address, address, uint256) returns (bool)",
@@ -191,7 +190,7 @@ function loadContractAddress() {
         // Use the deployed contract address from BSC testnet
         contractAddress = '0x90D29a452e52982c9cEcD04B2ed788215Aa97ce3';
         localStorage.setItem('msvContractAddress', contractAddress);
-        console.log('✅ Using deployed contract address:', contractAddress);
+        console.log('✔ Using deployed contract address:', contractAddress);
     }
 }
 
@@ -313,15 +312,15 @@ async function connectMetaMask() {
             console.log('Contract owner:', owner);
             
             if (owner.toLowerCase() !== address.toLowerCase()) {
-                console.log('⚠️ Ownership mismatch - allowing connection for testing');
+                console.log(' Ownership mismatch - allowing connection for testing');
                 console.log('Owner:', owner.toLowerCase());
                 console.log('Connected:', address.toLowerCase());
             } else {
-                console.log('✅ Ownership verified successfully!');
+                console.log('✔ Ownership verified successfully!');
             }
         } catch (error) {
             console.error('Error verifying ownership:', error);
-            console.log('⚠️ Allowing connection despite ownership verification error');
+            console.log(' Allowing connection despite ownership verification error');
         }
         
         isConnected = true;
@@ -394,15 +393,15 @@ async function connectWalletConnect() {
             console.log('Contract owner:', owner);
             
             if (owner.toLowerCase() !== address.toLowerCase()) {
-                console.log('⚠️ Ownership mismatch - allowing connection for testing');
+                console.log(' Ownership mismatch - allowing connection for testing');
                 console.log('Owner:', owner.toLowerCase());
                 console.log('Connected:', address.toLowerCase());
             } else {
-                console.log('✅ Ownership verified successfully!');
+                console.log('✔ Ownership verified successfully!');
             }
         } catch (error) {
             console.error('Error verifying ownership:', error);
-            console.log('⚠️ Allowing connection despite ownership verification error');
+            console.log(' Allowing connection despite ownership verification error');
         }
         
         isConnected = true;
@@ -636,7 +635,7 @@ async function emergencyUnlockAll() {
     }
     
     // Show confirmation dialog
-    if (!confirm(`⚠️ EMERGENCY ACTION ⚠️\n\nThis will unlock ALL remaining tokens for:\n${address}\n\nThis action cannot be undone. Are you sure?`)) {
+    if (!confirm(` EMERGENCY ACTION \n\nThis will unlock ALL remaining tokens for:\n${address}\n\nThis action cannot be undone. Are you sure?`)) {
         return;
     }
     
@@ -1052,7 +1051,7 @@ async function lookupParticipant() {
         ] = schedule;
         
         // Get additional balance information
-        const baseBalance = await contract.baseBalanceOf(address);
+        const baseBalance = await contract.balanceOf(address);
         const transferableBalance = await contract.transferableBalance(address);
         const lockedAmount = await contract.getLockedAmount(address);
         const vestedAmount = await contract.getVestedAmount(address);

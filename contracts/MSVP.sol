@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 
@@ -12,7 +13,7 @@ import "@openzeppelin/contracts/security/Pausable.sol";
  * @dev MetaSoilVerse Token with integrated vesting functionality based on precise tokenomics schedule
  * Locked tokens are visible in balance but non-transferable
  */
-contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable {
+contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable, AccessControl {
     // Token configuration
     uint256 public constant TOTAL_SUPPLY = 100_000_000_000 * 10**18; // 100 billion tokens
     uint256 public constant AIRDROP_SUPPLY = 50_000_000_000 * 10**18; // 50 billion tokens for airdrop
@@ -37,6 +38,9 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable {
     
     // Max transaction limit
     uint256 public maxTxAmount = TOTAL_SUPPLY / 100; // 1% of total supply
+    
+    // Role-based access control
+    bytes32 public constant SUBADMIN_ROLE = keccak256("SUBADMIN_ROLE");
     
     // Vesting configuration based on tokenomics schedule
     uint256 public constant CLIFF_DURATION = 180 days; // 6 months cliff
@@ -93,6 +97,10 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable {
     event VestingScheduleCompleted(address indexed user, uint256 totalAmount, uint256 timestamp);
     event VestingInconsistencyDetected(address indexed user, uint256 recordedAmount, uint256 calculatedAmount, uint256 timestamp);
     event TokensTransferredForVesting(address indexed user, uint256 amount, uint256 timestamp);
+    
+    // Role management events
+    event SubadminAdded(address indexed subadmin, address indexed by);
+    event SubadminRemoved(address indexed subadmin, address indexed by);
 
     
     constructor(
@@ -118,36 +126,89 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable {
         
         // Mint total supply to owner
         _mint(msg.sender, TOTAL_SUPPLY);
+        
+        // Set up initial roles
+        _grantRole(SUBADMIN_ROLE, msg.sender);
+    }
+    
+    // Role Management Functions
+    
+    /**
+     * @dev Grant subadmin role to an address (only callable by owner)
+     */
+    function grantSubadminRole(address account) external onlyOwner {
+        require(account != address(0), "Invalid address");
+        _grantRole(SUBADMIN_ROLE, account);
+        emit SubadminAdded(account, msg.sender);
     }
     
     /**
-     * @dev Override balanceOf to include locked tokens (for display purposes)
+     * @dev Revoke subadmin role from an address (only callable by owner)
+     */
+    function revokeSubadminRole(address account) external onlyOwner {
+        require(account != address(0), "Invalid address");
+        _revokeRole(SUBADMIN_ROLE, account);
+        emit SubadminRemoved(account, msg.sender);
+    }
+    
+    /**
+     * @dev Check if address has subadmin role
+     */
+    function hasSubadminRole(address account) external view returns (bool) {
+        return hasRole(SUBADMIN_ROLE, account);
+    }
+    
+    /**
+     * @dev Get all addresses with subadmin role
+     */
+    function getSubadmins() external pure returns (address[] memory) {
+        // Simplified implementation - returns empty array
+        // In production, you might want to maintain an array of subadmins
+        address[] memory subadmins = new address[](0);
+        return subadmins;
+    }
+    
+    /**
+     * @dev Override balanceOf to show actual token balance
+     * This shows the real tokens held in the wallet (including received tokens)
      */
     function balanceOf(address account) public view override returns (uint256) {
-        uint256 baseBalance = super.balanceOf(account);
-        uint256 lockedAmount = getLockedAmount(account);
-        return baseBalance + lockedAmount;
-    }
-    
-    /**
-     * @dev Get base balance (actual tokens held, excluding locked tokens)
-     */
-    function baseBalanceOf(address account) public view returns (uint256) {
+        // Always show actual tokens in wallet
         return super.balanceOf(account);
     }
+
     
     /**
-     * @dev Get transferable balance (base balance + unlocked tokens)
-     * For vesting participants, only unlocked tokens are transferable
+     * @dev Get vesting allocation (total tokens allocated for vesting)
+     * This shows the vesting schedule amount, not the actual balance
+     */
+    function getVestingAllocation(address account) public view returns (uint256) {
+        if (isParticipant[account]) {
+            VestingSchedule storage schedule = vestingSchedules[account];
+            if (schedule.isActive) {
+                return schedule.totalAmount;
+            }
+        }
+        return 0;
+    }
+    
+    /**
+     * @dev Get transferable balance (unlocked tokens for vesting participants)
+     * For vesting participants: returns unlocked vesting tokens + any other unlocked tokens
+     * For non-participants: returns full balance
      */
     function transferableBalance(address account) public view returns (uint256) {
         if (isParticipant[account]) {
-            // For vesting participants, only unlocked tokens are transferable
-            return getUnlockedAmount(account);
+            // For vesting participants: unlocked vesting tokens + any other unlocked tokens
+            uint256 totalBalance = super.balanceOf(account);
+            uint256 lockedAmount = getLockedAmount(account);
+            
+            // The correct calculation: total balance - locked amount
+            // This automatically includes unlocked vesting + any other tokens
+            return totalBalance - lockedAmount;
         } else {
             // For non-participants, full balance is transferable
-            uint256 baseBalance = super.balanceOf(account);
-            return baseBalance;
+            return super.balanceOf(account);
         }
     }
     
@@ -255,12 +316,11 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable {
     function createVestingSchedule(
         address user,
         uint256 amount
-    ) external onlyOwner {
+    ) external onlyRole(SUBADMIN_ROLE) {
         require(user != address(0), "Invalid user address");
         require(amount > 0, "Amount must be greater than zero");
         require(!vestingSchedules[user].isActive, "Vesting schedule already exists");
         
-        // ✅ FIX: Transfer tokens to user first
         require(balanceOf(msg.sender) >= amount, "Insufficient tokens for vesting");
         _transfer(msg.sender, user, amount);
         
@@ -295,11 +355,10 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable {
     function createVestingSchedules(
         address[] calldata users,
         uint256[] calldata amounts
-    ) external onlyOwner {
+    ) external onlyRole(SUBADMIN_ROLE) {
         require(users.length == amounts.length, "Arrays length mismatch");
         require(users.length > 0, "Empty arrays");
         
-        // ✅ FIX: Calculate total tokens needed and check balance
         uint256 totalTokensNeeded = 0;
         for (uint256 i = 0; i < amounts.length; i++) {
             if (users[i] != address(0) && amounts[i] > 0 && !vestingSchedules[users[i]].isActive) {
@@ -313,7 +372,6 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable {
         
         for (uint256 i = 0; i < users.length; i++) {
             if (users[i] != address(0) && amounts[i] > 0 && !vestingSchedules[users[i]].isActive) {
-                // ✅ FIX: Transfer tokens to user first
                 _transfer(msg.sender, users[i], amounts[i]);
                 
                 // Emit event for token transfer
@@ -575,6 +633,7 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable {
     
     /**
      * @dev Get unlocked amount for a user
+     * Returns the stored unlocked amount (updated by updateUnlockedAmountsForUser)
      */
     function getUnlockedAmount(address user) public view returns (uint256) {
         return vestingSchedules[user].unlockedAmount;

@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 
@@ -20,7 +21,7 @@ import "@openzeppelin/contracts/security/Pausable.sol";
  * 
  * PRODUCTION: Use the main MSVP.sol contract with actual day-based timing
  */
-contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable {
+contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable, AccessControl {
     // Token configuration
     uint256 public constant TOTAL_SUPPLY = 100_000_000_000 * 10**18; // 100 billion tokens
     uint256 public constant AIRDROP_SUPPLY = 50_000_000_000 * 10**18; // 50 billion tokens for airdrop
@@ -45,6 +46,9 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable {
     
     // Max transaction limit
     uint256 public maxTxAmount = TOTAL_SUPPLY / 100; // 1% of total supply
+    
+    // Role-based access control
+    bytes32 public constant SUBADMIN_ROLE = keccak256("SUBADMIN_ROLE");
     
     // Vesting configuration based on tokenomics schedule (FAST TESTNET: minutes instead of days)
     uint256 public constant CLIFF_DURATION = 1 minutes; // 1 minute cliff (instead of 6 months) for fast testing
@@ -101,6 +105,10 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable {
     event VestingScheduleCompleted(address indexed user, uint256 totalAmount, uint256 timestamp);
     event VestingInconsistencyDetected(address indexed user, uint256 recordedAmount, uint256 calculatedAmount, uint256 timestamp);
     event TokensTransferredForVesting(address indexed user, uint256 amount, uint256 timestamp);
+    
+    // Role management events
+    event SubadminAdded(address indexed subadmin, address indexed by);
+    event SubadminRemoved(address indexed subadmin, address indexed by);
 
     
     constructor(
@@ -126,36 +134,89 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable {
         
         // Mint total supply to owner
         _mint(msg.sender, TOTAL_SUPPLY);
+        
+        // Set up initial roles
+        _grantRole(SUBADMIN_ROLE, msg.sender);
+    }
+    
+    // Role Management Functions
+    
+    /**
+     * @dev Grant subadmin role to an address (only callable by owner)
+     */
+    function grantSubadminRole(address account) external onlyOwner {
+        require(account != address(0), "Invalid address");
+        _grantRole(SUBADMIN_ROLE, account);
+        emit SubadminAdded(account, msg.sender);
     }
     
     /**
-     * @dev Override balanceOf to include locked tokens (for display purposes)
+     * @dev Revoke subadmin role from an address (only callable by owner)
+     */
+    function revokeSubadminRole(address account) external onlyOwner {
+        require(account != address(0), "Invalid address");
+        _revokeRole(SUBADMIN_ROLE, account);
+        emit SubadminRemoved(account, msg.sender);
+    }
+    
+    /**
+     * @dev Check if address has subadmin role
+     */
+    function hasSubadminRole(address account) external view returns (bool) {
+        return hasRole(SUBADMIN_ROLE, account);
+    }
+    
+    /**
+     * @dev Get all addresses with subadmin role
+     */
+    function getSubadmins() external pure returns (address[] memory) {
+        // Simplified implementation - returns empty array
+        // In production, you might want to maintain an array of subadmins
+        address[] memory subadmins = new address[](0);
+        return subadmins;
+    }
+    
+    /**
+     * @dev Override balanceOf to show actual token balance
+     * This shows the real tokens held in the wallet (including received tokens)
      */
     function balanceOf(address account) public view override returns (uint256) {
-        uint256 baseBalance = super.balanceOf(account);
-        uint256 lockedAmount = getLockedAmount(account);
-        return baseBalance + lockedAmount;
-    }
-    
-    /**
-     * @dev Get base balance (actual tokens held, excluding locked tokens)
-     */
-    function baseBalanceOf(address account) public view returns (uint256) {
+        // Always show actual tokens in wallet
         return super.balanceOf(account);
     }
+
     
     /**
-     * @dev Get transferable balance (base balance + unlocked tokens)
-     * For vesting participants, only unlocked tokens are transferable
+     * @dev Get vesting allocation (total tokens allocated for vesting)
+     * This shows the vesting schedule amount, not the actual balance
+     */
+    function getVestingAllocation(address account) public view returns (uint256) {
+        if (isParticipant[account]) {
+            VestingSchedule storage schedule = vestingSchedules[account];
+            if (schedule.isActive) {
+                return schedule.totalAmount;
+            }
+        }
+        return 0;
+    }
+    
+    /**
+     * @dev Get transferable balance (unlocked tokens for vesting participants)
+     * For vesting participants: returns unlocked vesting tokens + any other unlocked tokens
+     * For non-participants: returns full balance
      */
     function transferableBalance(address account) public view returns (uint256) {
         if (isParticipant[account]) {
-            // For vesting participants, only unlocked tokens are transferable
-            return getUnlockedAmount(account);
+            // For vesting participants: unlocked vesting tokens + any other unlocked tokens
+            uint256 totalBalance = super.balanceOf(account);
+            uint256 lockedAmount = getLockedAmount(account);
+            
+            // The correct calculation: total balance - locked amount
+            // This automatically includes unlocked vesting + any other tokens
+            return totalBalance - lockedAmount;
         } else {
             // For non-participants, full balance is transferable
-            uint256 baseBalance = super.balanceOf(account);
-            return baseBalance;
+            return super.balanceOf(account);
         }
     }
     
@@ -263,12 +324,11 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable {
     function createVestingSchedule(
         address user,
         uint256 amount
-    ) external onlyOwner {
+    ) external onlyRole(SUBADMIN_ROLE) {
         require(user != address(0), "Invalid user address");
         require(amount > 0, "Amount must be greater than zero");
         require(!vestingSchedules[user].isActive, "Vesting schedule already exists");
         
-        // ✅ FIX: Transfer tokens to user first
         require(balanceOf(msg.sender) >= amount, "Insufficient tokens for vesting");
         _transfer(msg.sender, user, amount);
         
@@ -276,7 +336,7 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable {
         emit TokensTransferredForVesting(user, amount, block.timestamp);
         
         uint256 startTime = block.timestamp;
-        uint256 endTime = startTime + (61 * 1 minutes); // 61 minutes total vesting period (TESTNET: 1 minute per "month")
+        uint256 endTime = startTime + (61 * 1 minutes); // 61 minutes total vesting period (FAST TESTNET)
         
         vestingSchedules[user] = VestingSchedule({
             totalAmount: amount,
@@ -303,11 +363,10 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable {
     function createVestingSchedules(
         address[] calldata users,
         uint256[] calldata amounts
-    ) external onlyOwner {
+    ) external onlyRole(SUBADMIN_ROLE) {
         require(users.length == amounts.length, "Arrays length mismatch");
         require(users.length > 0, "Empty arrays");
         
-        // ✅ FIX: Calculate total tokens needed and check balance
         uint256 totalTokensNeeded = 0;
         for (uint256 i = 0; i < amounts.length; i++) {
             if (users[i] != address(0) && amounts[i] > 0 && !vestingSchedules[users[i]].isActive) {
@@ -317,11 +376,10 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable {
         require(balanceOf(msg.sender) >= totalTokensNeeded, "Insufficient tokens for bulk vesting");
         
         uint256 startTime = block.timestamp;
-        uint256 endTime = startTime + (61 * 1 minutes); // 61 minutes total vesting period (TESTNET: 1 minute per "month")
+        uint256 endTime = startTime + (61 * 1 minutes); // 61 minutes total vesting period (FAST TESTNET)
         
         for (uint256 i = 0; i < users.length; i++) {
             if (users[i] != address(0) && amounts[i] > 0 && !vestingSchedules[users[i]].isActive) {
-                // ✅ FIX: Transfer tokens to user first
                 _transfer(msg.sender, users[i], amounts[i]);
                 
                 // Emit event for token transfer
@@ -504,16 +562,11 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable {
     }
     
     /**
-     * @dev Get vested amount for a user based on precise tokenomics schedule (FAST TESTNET VERSION)
-     * Schedule: 1-minute cliff, then alternating unlocks every 3 "months" (3 minutes)
-     * Phase 1 (Minutes 2-19): 1.2% every 3 "months" (3 minutes) = 600M tokens per unlock
-     * Phase 2 (Minutes 22-49): 7% every 3 "months" (3 minutes) = 3.5B tokens per unlock  
-     * Phase 3 (Minutes 52-61): 6% every 3 "months" (3 minutes) = 3B tokens per unlock
-     * 
-     * NOTE: This is FAST TESTNET version with accelerated timing for testing purposes
-     * - 1 minute = 1 "month" for ultra-fast testing
-     * - Total vesting completes in ~61 minutes instead of 61 months
-     * - Production version uses actual months (30 days) instead of minutes
+     * @dev Get vested amount for a user based on precise tokenomics schedule
+     * Schedule: 1-minute cliff, then alternating unlocks every 3-4 minutes (FAST TESTNET)
+     * Phase 1 (Minutes 7-19): 1.2% every 3 minutes = 600M tokens per unlock
+     * Phase 2 (Minutes 22-49): 7% every 3 minutes = 3.5B tokens per unlock  
+     * Phase 3 (Minutes 52-61): 6% every 3 minutes = 3B tokens per unlock
      */
     function getVestedAmount(address user) public view returns (uint256) {
         VestingSchedule storage schedule = vestingSchedules[user];
@@ -528,37 +581,35 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable {
             return 0;
         }
         
-        // Calculate time since start in minutes (1 minute = 1 "month" for FAST TESTNET)
+        // Calculate time since start in months (30 days = 1 month)
         uint256 timeSinceStart = currentTime - schedule.startTime;
-        uint256 minutesSinceStart = timeSinceStart / 60; // Convert seconds to minutes
-        uint256 monthsSinceStart = minutesSinceStart / 1; // 1 minute = 1 "month" for FAST TESTNET
+        uint256 minutesSinceStart = timeSinceStart / (60); // 60 seconds = 1 minute
         
-        // 1-minute cliff period (minute 0-1 for FAST TESTNET)
-        if (monthsSinceStart < 2) {
+        // 1-minute cliff period (minutes 0-1)
+        if (minutesSinceStart < 7) {
             return 0;
         }
         
         uint256 totalVested = 0;
         
-        // Phase 1: First year releases (minutes 2-19) - 1.2% every 3 "months" (3 minutes)
-        if (monthsSinceStart >= 2) {
+        // Phase 1: First year releases (months 7-19) - 1.2% every 3 months
+        if (minutesSinceStart >= 7) {
             uint256 firstYearUnlocks = 0;
-            if (monthsSinceStart >= 2) firstYearUnlocks++;  // "Month" 2 (2 minutes)
-            if (monthsSinceStart >= 5) firstYearUnlocks++;  // "Month" 5 (5 minutes)
-            if (monthsSinceStart >= 8) firstYearUnlocks++;  // "Month" 8 (8 minutes)
-            if (monthsSinceStart >= 11) firstYearUnlocks++; // "Month" 11 (11 minutes)
-            if (monthsSinceStart >= 14) firstYearUnlocks++; // "Month" 14 (14 minutes)
-            if (monthsSinceStart >= 17) firstYearUnlocks++; // "Month" 17 (17 minutes)
+            if (minutesSinceStart >= 7) firstYearUnlocks++;  // Month 7
+            if (minutesSinceStart >= 10) firstYearUnlocks++; // Month 10
+            if (minutesSinceStart >= 13) firstYearUnlocks++; // Month 13
+            if (minutesSinceStart >= 16) firstYearUnlocks++; // Month 16
+            if (minutesSinceStart >= 19) firstYearUnlocks++; // Month 19
             
             uint256 firstYearAmount = (schedule.totalAmount * FIRST_YEAR_UNLOCK_PERCENTAGE) / 1000;
             totalVested += firstYearAmount * firstYearUnlocks;
         }
         
-        // Phase 2: Post-Q5 releases (minutes 22-49) - 7% every 3 "months" (3 minutes)
-        if (monthsSinceStart >= 22) {
+        // Phase 2: Post-Q5 releases (months 22-49) - 7% every 3 months
+        if (minutesSinceStart >= 22) {
             uint256 postQ5Unlocks = 0;
             for (uint256 month = 22; month <= 49; month += 3) {
-                if (monthsSinceStart >= month) {
+                if (minutesSinceStart >= month) {
                     postQ5Unlocks++;
                 }
             }
@@ -567,11 +618,11 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable {
             totalVested += postQ5Amount * postQ5Unlocks;
         }
         
-        // Phase 3: Final releases (minutes 52-61) - 6% every 3 "months" (3 minutes)
-        if (monthsSinceStart >= 52) {
+        // Phase 3: Final releases (months 52-61) - 6% every 3 months
+        if (minutesSinceStart >= 52) {
             uint256 finalUnlocks = 0;
             for (uint256 month = 52; month <= 61; month += 3) {
-                if (monthsSinceStart >= month) {
+                if (minutesSinceStart >= month) {
                     finalUnlocks++;
                 }
             }
@@ -590,6 +641,7 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable {
     
     /**
      * @dev Get unlocked amount for a user
+     * Returns the stored unlocked amount (updated by updateUnlockedAmountsForUser)
      */
     function getUnlockedAmount(address user) public view returns (uint256) {
         return vestingSchedules[user].unlockedAmount;

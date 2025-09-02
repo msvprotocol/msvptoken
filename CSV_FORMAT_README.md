@@ -4,7 +4,7 @@
 
 This guide explains the CSV format required for bulk vesting schedule creation in the MSVP (MetaSoilVerseProtocol) smart contract.
 
-## 🎯 Contract Specifications
+##  Contract Specifications
 
 ### Token Details
 - **Token Name**: MetaSoilVerseProtocol
@@ -131,7 +131,7 @@ const amounts = [1000000, 2500000];
 await msvpToken.createVestingSchedules(addresses, amounts);
 ```
 
-## ⚠️ Important Notes
+##  Important Notes
 
 ### Gas Considerations
 - **Bulk Operations**: High gas usage for large CSV files
@@ -148,7 +148,7 @@ await msvpToken.createVestingSchedules(addresses, amounts);
 - **No Manual Claiming**: Tokens unlock automatically
 - **Real-time Updates**: Balances update during transfers
 
-## 🔍 Troubleshooting
+##  Troubleshooting
 
 ### Common Issues
 1. **Invalid Address**: Check address format (0x + 40 hex chars)

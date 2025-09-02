@@ -1,6 +1,6 @@
-# 🚀 MSV Token Vesting - BSC Testnet Deployment Guide
+#  MSV Token Vesting - BSC Testnet Deployment Guide
 
-## 📋 Prerequisites
+##  Prerequisites
 
 ### 1. **BSC Testnet BNB**
 You need test BNB to deploy the contract. Get it from:
@@ -15,7 +15,7 @@ For contract verification on BSCScan:
 - Go to [BSCScan](https://bscscan.com/)
 - Create an account and get your API key
 
-## 🔧 Setup Environment Variables
+##  Setup Environment Variables
 
 1. **Copy the environment file:**
    ```bash
@@ -39,7 +39,7 @@ For contract verification on BSCScan:
    REPORT_GAS=true
    ```
 
-## 🚀 Deploy to BSC Testnet
+##  Deploy to BSC Testnet
 
 ### Option 1: Using npm script
 ```bash
@@ -51,17 +51,17 @@ npm run deploy:bsc-testnet
 npx hardhat run scripts/deploy-bsc-testnet.js --network bscTestnet
 ```
 
-## 📊 Deployment Process
+##  Deployment Process
 
 The deployment script will:
 
-1. ✅ **Check your balance** (needs at least 0.01 BNB)
-2. 🔨 **Deploy the contract** with your configuration
-3. 🔍 **Verify the contract** on BSCScan (if API key provided)
-4. 💾 **Save deployment info** to `deployment-bsc-testnet.json`
-5. 📋 **Display summary** with contract address and BSCScan URL
+1.  **Check your balance** (needs at least 0.01 BNB)
+2.  **Deploy the contract** with your configuration
+3.  **Verify the contract** on BSCScan (if API key provided)
+4.  **Save deployment info** to `deployment-bsc-testnet.json`
+5.  **Display summary** with contract address and BSCScan URL
 
-## 🎯 After Deployment
+##  After Deployment
 
 ### 1. **Copy Contract Address**
 The script will output the contract address. Copy it for your admin dashboard.
@@ -75,7 +75,7 @@ Update your admin dashboard with the new contract address.
 ### 4. **Test Functions**
 Use the admin dashboard to test all contract functions.
 
-## 🔍 Contract Verification
+##  Contract Verification
 
 If you have a BSCScan API key, the contract will be automatically verified. If not, you can verify manually:
 
@@ -89,7 +89,7 @@ If you have a BSCScan API key, the contract will be automatically verified. If n
    - **Optimization**: Yes
    - **Constructor Arguments**: Your wallet addresses
 
-## 🛠️ Troubleshooting
+##  Troubleshooting
 
 ### **Insufficient Balance**
 ```
@@ -115,7 +115,7 @@ If you have a BSCScan API key, the contract will be automatically verified. If n
 ```
 **Solution**: Increase gas price in hardhat.config.js or try again later.
 
-## 📱 Admin Dashboard Setup
+##  Admin Dashboard Setup
 
 After deployment:
 
@@ -124,19 +124,19 @@ After deployment:
 3. **Connect your wallet** using WalletConnect
 4. **Start managing** your vesting contracts
 
-## 🔗 Useful Links
+##  Useful Links
 
 - [BSC Testnet Explorer](https://testnet.bscscan.com/)
 - [BSC Testnet Faucet](https://testnet.binance.org/faucet-smart)
 - [BSCScan API Documentation](https://docs.bscscan.com/)
 - [Hardhat Documentation](https://hardhat.org/docs)
 
-## 🎉 Success!
+##  Success!
 
 Once deployed, you'll have:
-- ✅ **Deployed contract** on BSC testnet
-- ✅ **Verified contract** on BSCScan
-- ✅ **Admin dashboard** ready to use
-- ✅ **Complete vesting system** ready for testing
+- ✔ **Deployed contract** on BSC testnet
+- ✔ **Verified contract** on BSCScan
+- ✔ **Admin dashboard** ready to use
+- ✔ **Complete vesting system** ready for testing
 
-Happy deploying! 🚀 
+Happy deploying!  

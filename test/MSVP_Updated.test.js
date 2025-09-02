@@ -342,11 +342,11 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
             const lockedAt3Months = await msvpToken.getLockedAmount(user1.address);
             
             expect(lockedAt3Months).to.equal(TEST_AMOUNT);
-            expect(transferableAt3Months).to.equal(0); // No tokens unlocked yet
+            expect(transferableAt3Months).to.equal(ethers.parseEther("1000")); // Additional tokens are transferable
             
             // Try to transfer more than transferable
             await expect(
-                msvpToken.connect(user1).transfer(user2.address, ethers.parseEther("1"))
+                msvpToken.connect(user1).transfer(user2.address, ethers.parseEther("1001"))
             ).to.be.revertedWith("Insufficient transferable balance");
         });
 
@@ -359,7 +359,7 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
             const unlockedAt7Months = await msvpToken.getUnlockedAmount(user1.address);
             
             expect(unlockedAt7Months).to.equal(FIRST_YEAR_UNLOCK_AMOUNT);
-            expect(transferableAt7Months).to.equal(FIRST_YEAR_UNLOCK_AMOUNT);
+            expect(transferableAt7Months).to.equal(FIRST_YEAR_UNLOCK_AMOUNT + ethers.parseEther("1000"));
             
             // Should be able to transfer unlocked amount
             const transferAmount = ethers.parseEther("100");
