@@ -979,6 +979,8 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
         describe("Tax Component Management", function () {
             it("Should update LP contribution rate correctly", async function () {
                 const newRate = 25; // 2.5% (safe value)
+                // Reduce another component first to keep sum <= transferTaxRate
+                await msvpToken.updateBurnRate(0);
                 await msvpToken.updateLPContributionRate(newRate);
                 
                 // Verify rate was updated
@@ -998,10 +1000,13 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
                 
                 // Restore original rate
                 await msvpToken.updateLPContributionRate(20);
+                await msvpToken.updateBurnRate(5);
             });
 
             it("Should update development rate correctly", async function () {
                 const newRate = 20; // 2% (safe value)
+                // Reduce another component first to keep sum <= transferTaxRate
+                await msvpToken.updateBurnRate(0);
                 await msvpToken.updateDevelopmentRate(newRate);
                 
                 // Verify rate was updated
@@ -1021,10 +1026,13 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
                 
                 // Restore original rate
                 await msvpToken.updateDevelopmentRate(15);
+                await msvpToken.updateBurnRate(5);
             });
 
             it("Should update marketing rate correctly", async function () {
                 const newRate = 15; // 1.5%
+                // Reduce another component first to keep sum <= transferTaxRate
+                await msvpToken.updateBurnRate(0);
                 await msvpToken.updateMarketingRate(newRate);
                 
                 // Verify rate was updated
@@ -1044,10 +1052,13 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
                 
                 // Restore original rate
                 await msvpToken.updateMarketingRate(10);
+                await msvpToken.updateBurnRate(5);
             });
 
             it("Should update burn rate correctly", async function () {
                 const newRate = 8; // 0.8% (safe value)
+                // Lower LP slightly to maintain aggregate constraint
+                await msvpToken.updateLPContributionRate(17);
                 await msvpToken.updateBurnRate(newRate);
                 
                 // Verify rate was updated
@@ -1058,11 +1069,14 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
                 const transferAmount = ethers.parseEther("1000");
                 const expectedTax = (transferAmount * BigInt(50)) / BigInt(1000); // 5% tax
                 
-                // Calculate expected burn amount based on remaining tax after other distributions
-                const lpAmount = (expectedTax * BigInt(20)) / BigInt(50); // 2% of total tax
-                const devAmount = (expectedTax * BigInt(15)) / BigInt(50); // 1.5% of total tax
-                const marketingAmount = (expectedTax * BigInt(10)) / BigInt(50); // 1% of total tax
-                const expectedBurnAmount = expectedTax - lpAmount - devAmount - marketingAmount; // Remaining tax
+                // Calculate expected burn amount dynamically based on current component rates
+                const breakdown = await msvpToken.getTaxBreakdown();
+                const transferTax = breakdown[0];
+                const lpRate = breakdown[1];
+                const devRate = breakdown[2];
+                const marketingRate = breakdown[3];
+                const remainingRate = transferTax - lpRate - devRate - marketingRate;
+                const expectedBurnAmount = (expectedTax * remainingRate) / transferTax;
                 
                 const initialTotalSupply = await msvpToken.totalSupply();
                 await msvpToken.connect(userWithTokens).transfer(recipient.address, transferAmount);
@@ -1074,11 +1088,12 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
                 
                 // Restore original rate
                 await msvpToken.updateBurnRate(5);
+                await msvpToken.updateLPContributionRate(20);
             });
 
             it("Should prevent tax components exceeding total tax rate", async function () {
                 // Try to set LP rate to 60% (exceeds 50% total tax)
-                await expect(
+            await expect(
                     msvpToken.updateLPContributionRate(60)
                 ).to.be.revertedWith("Rate cannot exceed transfer tax");
                 
@@ -1304,14 +1319,12 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
             });
 
             it("Should handle maximum precision tax rates", async function () {
-                // Set tax rate to 0.1% (minimum precision)
-                await msvpToken.updateTransferTaxRate(1);
-                
-                // Set all component rates to 0 to avoid overflow
+                // Zero components first, then set tiny tax rate to satisfy aggregate constraint
                 await msvpToken.updateLPContributionRate(0);
                 await msvpToken.updateDevelopmentRate(0);
                 await msvpToken.updateMarketingRate(0);
                 await msvpToken.updateBurnRate(0);
+                await msvpToken.updateTransferTaxRate(1); // 0.1%
                 
                 const transferAmount = ethers.parseEther("1000");
                 const expectedTax = (transferAmount * BigInt(1)) / BigInt(1000); // 0.1%
@@ -1330,11 +1343,11 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
             });
 
             it("Should handle tax distribution with zero component rates", async function () {
-                // Set all component rates to 0 except one
-                await msvpToken.updateLPContributionRate(50); // 5% (all tax goes to LP)
+                // Set all component rates to 0 except one (order respects aggregate constraint)
                 await msvpToken.updateDevelopmentRate(0);
                 await msvpToken.updateMarketingRate(0);
                 await msvpToken.updateBurnRate(0);
+                await msvpToken.updateLPContributionRate(50); // 5% (all tax goes to LP)
                 
                 const transferAmount = ethers.parseEther("1000");
                 const expectedTax = (transferAmount * BigInt(50)) / BigInt(1000); // 5% tax
@@ -1559,8 +1572,8 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
                 await time.increase(6 * MONTH_IN_SECONDS);
                 let locked = await msvpToken.getLockedAmount(testUser.address);
                 expect(locked).to.equal(testAmount); // All tokens still locked
-
-                // Advance to month 7 (first unlock)
+            
+            // Advance to month 7 (first unlock)
                 await time.increase(1 * MONTH_IN_SECONDS);
                 await msvpToken.updateUnlockedAmountsForUser(testUser.address);
                 locked = await msvpToken.getLockedAmount(testUser.address);
@@ -1590,11 +1603,11 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
         describe("Enhanced Tax Distribution Edge Cases", function () {
 
             it("Should handle maximum component rates", async function () {
-                // Set maximum component rates that don't exceed total tax rate
+                // Set maximum component rates that don't exceed total tax rate (order respects aggregate constraint)
+                await msvpToken.updateBurnRate(0); // 0%
                 await msvpToken.updateLPContributionRate(25); // 2.5%
                 await msvpToken.updateDevelopmentRate(15); // 1.5%
                 await msvpToken.updateMarketingRate(10); // 1%
-                await msvpToken.updateBurnRate(0); // 0%
 
                 const transferAmount = ethers.parseEther("100"); // Use smaller amount
                 const expectedTax = (transferAmount * BigInt(50)) / BigInt(1000); // 5% tax
@@ -1621,12 +1634,13 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
             });
 
             it("Should handle precision edge cases with high precision tax rates", async function () {
-                // Set very small tax rates
+                // Set very small tax rates (apply components after lowering total)
+                await msvpToken.updateLPContributionRate(0);
+                await msvpToken.updateDevelopmentRate(0);
+                await msvpToken.updateMarketingRate(0);
+                await msvpToken.updateBurnRate(0);
                 await msvpToken.updateTransferTaxRate(1); // 0.1%
                 await msvpToken.updateLPContributionRate(1); // 0.1%
-                await msvpToken.updateDevelopmentRate(0); // 0%
-                await msvpToken.updateMarketingRate(0); // 0%
-                await msvpToken.updateBurnRate(0); // 0%
 
                 const transferAmount = ethers.parseEther("1"); // Very small transfer
                 const expectedTax = (transferAmount * BigInt(1)) / BigInt(1000); // 0.1% tax
@@ -1642,10 +1656,10 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
             it("Should handle gas optimization for large tax amounts", async function () {
                 // Set moderate tax rates
                 await msvpToken.updateTransferTaxRate(100); // 10%
+                await msvpToken.updateBurnRate(0); // set first to respect aggregate constraint
                 await msvpToken.updateLPContributionRate(50); // 5%
                 await msvpToken.updateDevelopmentRate(30); // 3%
                 await msvpToken.updateMarketingRate(20); // 2%
-                await msvpToken.updateBurnRate(0); // 0%
 
                 const transferAmount = ethers.parseEther("1000"); // Large transfer
                 const expectedTax = (transferAmount * BigInt(100)) / BigInt(1000); // 10% tax
@@ -1696,6 +1710,249 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
 
                 expect(totalDistributedTax).to.be.closeTo(expectedTax, ethers.parseEther("0.001"));
             });
+        });
+    });
+
+    describe("Multiple vesting schedules per user", function () {
+        it("Should allow creating multiple schedules and vest independently", async function () {
+            // amount1 starts now
+            const amount1 = TEST_AMOUNT;
+            // amount2 will be created later
+            const amount2 = TEST_AMOUNT / BigInt(2);
+
+            await msvpToken.createVestingSchedule(user1.address, amount1);
+
+            // Advance to first schedule's first unlock (month 7)
+            await time.increase(7 * MONTH_IN_SECONDS);
+            await msvpToken.updateUnlockedAmountsForUser(user1.address);
+
+            const firstUnlockAmount = (amount1 * BigInt(FIRST_YEAR_UNLOCK_PERCENTAGE)) / BigInt(1000);
+            expect(await msvpToken.getUnlockedAmount(user1.address)).to.equal(firstUnlockAmount);
+            
+            // Check transferable equals unlocked and locked equals allocation - unlocked
+            const allocAfterFirst = await msvpToken.getVestingAllocation(user1.address);
+            const lockedAfterFirst = await msvpToken.getLockedAmount(user1.address);
+            const transferableAfterFirst = await msvpToken.transferableBalance(user1.address);
+            expect(allocAfterFirst).to.equal(amount1);
+            expect(lockedAfterFirst).to.equal(amount1 - firstUnlockAmount);
+            expect(transferableAfterFirst).to.equal(firstUnlockAmount);
+
+            // Create second schedule after first cliff of the first schedule
+            await msvpToken.createVestingSchedule(user1.address, amount2);
+
+            // Advance 3 months: first schedule hits second unlock; second schedule still before its cliff
+            await time.increase(3 * MONTH_IN_SECONDS);
+            await msvpToken.updateUnlockedAmountsForUser(user1.address);
+
+            const expectedAfterSecondFirstYearUnlock = firstUnlockAmount * BigInt(2);
+            expect(await msvpToken.getUnlockedAmount(user1.address)).to.equal(expectedAfterSecondFirstYearUnlock);
+            
+            // Check transferable equals unlocked and locked reflects second schedule fully locked
+            const allocAfterSecond = await msvpToken.getVestingAllocation(user1.address);
+            const lockedAfterSecond = await msvpToken.getLockedAmount(user1.address);
+            const transferableAfterSecond = await msvpToken.transferableBalance(user1.address);
+            expect(allocAfterSecond).to.equal(amount1 + amount2);
+            expect(lockedAfterSecond).to.equal((amount1 - expectedAfterSecondFirstYearUnlock) + amount2);
+            expect(transferableAfterSecond).to.equal(expectedAfterSecondFirstYearUnlock);
+
+            // Advance 4 more months: second schedule reaches its first unlock (month 7 since its own start)
+            await time.increase(4 * MONTH_IN_SECONDS);
+            await msvpToken.updateUnlockedAmountsForUser(user1.address);
+
+            const secondScheduleFirstUnlock = (amount2 * BigInt(FIRST_YEAR_UNLOCK_PERCENTAGE)) / BigInt(1000);
+            const expectedFirstScheduleAfter14Months = firstUnlockAmount * BigInt(3); // months 7,10,13
+            const totalExpected = expectedFirstScheduleAfter14Months + secondScheduleFirstUnlock;
+            expect(await msvpToken.getUnlockedAmount(user1.address)).to.equal(totalExpected);
+            
+            // Check transferable equals total unlocked and locked equals allocation - total unlocked
+            const allocFinal = await msvpToken.getVestingAllocation(user1.address);
+            const lockedFinal = await msvpToken.getLockedAmount(user1.address);
+            const transferableFinal = await msvpToken.transferableBalance(user1.address);
+            expect(allocFinal).to.equal(amount1 + amount2);
+            expect(lockedFinal).to.equal((amount1 + amount2) - totalExpected);
+            expect(transferableFinal).to.equal(totalExpected);
+        });
+
+        it("Should restrict earlyRelease to latest schedule's locked amount", async function () {
+            const amount1 = TEST_AMOUNT;
+            const amount2 = TEST_AMOUNT;
+            await msvpToken.createVestingSchedule(user1.address, amount1);
+            // Reach first unlock for schedule 1
+            await time.increase(7 * MONTH_IN_SECONDS);
+            await msvpToken.updateUnlockedAmountsForUser(user1.address);
+            const firstUnlock1 = (amount1 * BigInt(FIRST_YEAR_UNLOCK_PERCENTAGE)) / BigInt(1000);
+            // Create schedule 2 later (still at age 0)
+            await msvpToken.createVestingSchedule(user1.address, amount2);
+            // Advance 3 months: schedule 1 second unlock, schedule 2 still before cliff
+            await time.increase(3 * MONTH_IN_SECONDS);
+            await msvpToken.updateUnlockedAmountsForUser(user1.address);
+            const expectedVestedSoFar = firstUnlock1 * BigInt(2);
+            expect(await msvpToken.getUnlockedAmount(user1.address)).to.equal(expectedVestedSoFar);
+            
+            // Try to early release more than schedule 2's locked (which equals amount2 now)
+            await expect(
+                msvpToken.earlyRelease(user1.address, amount2 + ethers.parseEther("1"))
+            ).to.be.revertedWith("Amount exceeds remaining locked tokens");
+            
+            // Early release a small amount from latest schedule
+            const manualRelease = ethers.parseEther("10");
+            await msvpToken.earlyRelease(user1.address, manualRelease);
+            const unlockedAfterManual = await msvpToken.getUnlockedAmount(user1.address);
+            const lockedAfterManual = await msvpToken.getLockedAmount(user1.address);
+            const transferableAfterManual = await msvpToken.transferableBalance(user1.address);
+            expect(unlockedAfterManual).to.equal(expectedVestedSoFar + manualRelease);
+            expect(transferableAfterManual).to.equal(unlockedAfterManual);
+            const alloc = await msvpToken.getVestingAllocation(user1.address);
+            expect(lockedAfterManual).to.equal(alloc - unlockedAfterManual);
+        });
+
+        it("Should report isVestingComplete=false until all schedules complete", async function () {
+            const amount1 = TEST_AMOUNT;
+            const amount2 = TEST_AMOUNT / BigInt(2);
+            await msvpToken.createVestingSchedule(user1.address, amount1);
+            await time.increase(7 * MONTH_IN_SECONDS);
+            await msvpToken.updateUnlockedAmountsForUser(user1.address);
+            await msvpToken.createVestingSchedule(user1.address, amount2);
+            // We have advanced 7 months so far
+            // Advance to first schedule complete (61 months from its start)
+            await time.increase(54 * MONTH_IN_SECONDS); // total 61 from first
+            await msvpToken.updateUnlockedAmountsForUser(user1.address);
+            expect(await msvpToken.isVestingComplete(user1.address)).to.equal(false);
+            // Now complete second schedule as well: second started at first+7 months; we've advanced 54 since, so second age=54
+            await time.increase(7 * MONTH_IN_SECONDS);
+            await msvpToken.updateUnlockedAmountsForUser(user1.address);
+            expect(await msvpToken.isVestingComplete(user1.address)).to.equal(true);
+        });
+
+        it("Should allow bulk creation with duplicate user entries and sum unlocks", async function () {
+            const A = TEST_AMOUNT / BigInt(4);
+            const B = TEST_AMOUNT / BigInt(5);
+            await msvpToken.createVestingSchedules([user1.address, user1.address], [A, B]);
+            // After 7 months, unlocked should be 1.2% of (A+B)
+            await time.increase(7 * MONTH_IN_SECONDS);
+            await msvpToken.updateUnlockedAmountsForUser(user1.address);
+            const expected = ((A + B) * BigInt(FIRST_YEAR_UNLOCK_PERCENTAGE)) / BigInt(1000);
+            const unlocked = await msvpToken.getUnlockedAmount(user1.address);
+            const transferable = await msvpToken.transferableBalance(user1.address);
+            const locked = await msvpToken.getLockedAmount(user1.address);
+            expect(unlocked).to.equal(expected);
+            expect(transferable).to.equal(expected);
+            const alloc = await msvpToken.getVestingAllocation(user1.address);
+            expect(locked).to.equal(alloc - expected);
+        });
+    });
+
+    describe("Security checks", function () {
+        it("Should restrict vesting management to owner only", async function () {
+            const amount = TEST_AMOUNT;
+            await msvpToken.createVestingSchedule(user1.address, amount);
+            // Non-owner attempts
+            await expect(msvpToken.connect(user1).earlyRelease(user1.address, ethers.parseEther("1")))
+                .to.be.revertedWith("Ownable: caller is not the owner");
+            await expect(msvpToken.connect(user1).emergencyUnlockAll(user1.address))
+                .to.be.revertedWith("Ownable: caller is not the owner");
+            await expect(msvpToken.connect(user1).deactivateVestingSchedule(user1.address))
+                .to.be.revertedWith("Ownable: caller is not the owner");
+            await expect(msvpToken.connect(user1).reactivateVestingSchedule(user1.address))
+                .to.be.revertedWith("Ownable: caller is not the owner");
+            await expect(msvpToken.connect(user1).cancelVestingSchedule(user1.address))
+                .to.be.revertedWith("Ownable: caller is not the owner");
+            await expect(msvpToken.connect(user1).toggleAirdropStatus(user1.address))
+                .to.be.revertedWith("Ownable: caller is not the owner");
+        });
+
+        it("Should revert management calls when no active schedule exists", async function () {
+            // No schedules for user2
+            await expect(msvpToken.earlyRelease(user2.address, ethers.parseEther("1")))
+                .to.be.revertedWith("No active vesting schedule");
+            await expect(msvpToken.emergencyUnlockAll(user2.address))
+                .to.be.revertedWith("No active vesting schedule");
+            await expect(msvpToken.deactivateVestingSchedule(user2.address))
+                .to.be.revertedWith("No active vesting schedule");
+            await expect(msvpToken.cancelVestingSchedule(user2.address))
+                .to.be.revertedWith("No active vesting schedule");
+            await expect(msvpToken.toggleAirdropStatus(user2.address))
+                .to.be.revertedWith("No active vesting schedule");
+            // Reactivate has distinct message for nonexistent schedule
+            await expect(msvpToken.reactivateVestingSchedule(user2.address))
+                .to.be.revertedWith("No vesting schedule exists");
+        });
+
+        it("Should enforce pause on transfers and schedule creation", async function () {
+            const someAmount = TEST_AMOUNT / BigInt(10);
+            // Pause contract
+            await msvpToken.pause();
+            // Transfer blocked
+            await expect(msvpToken.transfer(user1.address, ethers.parseEther("1")))
+                .to.be.revertedWith("Pausable: paused");
+            // Schedule creation blocked (uses _transfer under the hood)
+            await expect(msvpToken.createVestingSchedule(user1.address, someAmount))
+                .to.be.revertedWith("Pausable: paused");
+            // Unpause and succeed
+            await msvpToken.unpause();
+            await expect(msvpToken.createVestingSchedule(user1.address, someAmount))
+                .to.not.be.reverted;
+        });
+
+        it("Should validate inputs: zero address, zero amount, and bulk length mismatch", async function () {
+            await expect(msvpToken.createVestingSchedule(ethers.ZeroAddress, TEST_AMOUNT))
+                .to.be.revertedWith("Invalid user address");
+            await expect(msvpToken.createVestingSchedule(user1.address, 0n))
+                .to.be.revertedWith("Amount must be greater than zero");
+            await expect(msvpToken.createVestingSchedules([user1.address], []))
+                .to.be.revertedWith("Arrays length mismatch");
+        });
+    });
+
+    describe("ModifyVestingSchedule creator and transfer behavior", function () {
+        it("Should only allow the original creator to modify and transfer delta on increase", async function () {
+            const amount = TEST_AMOUNT / BigInt(10);
+            // Owner creates schedule for user1
+            await msvpToken.createVestingSchedule(user1.address, amount);
+            // Non-creator (user1) cannot modify
+            await expect(msvpToken.connect(user1).modifyVestingSchedule(user1.address, amount + BigInt(1)))
+                .to.be.revertedWith("Only schedule creator");
+
+            // Creator increases amount and tokens should be transferred from creator (owner) to user1
+            const ownerBalBefore = await msvpToken.balanceOf((await ethers.getSigners())[0].address);
+            const user1BalBefore = await msvpToken.balanceOf(user1.address);
+            const newAmount = amount + ethers.parseEther("100");
+            await expect(msvpToken.modifyVestingSchedule(user1.address, newAmount)).to.emit(msvpToken, "TokensTransferredForVesting");
+            const ownerBalAfter = await msvpToken.balanceOf((await ethers.getSigners())[0].address);
+            const user1BalAfter = await msvpToken.balanceOf(user1.address);
+            expect(ownerBalBefore - ownerBalAfter).to.equal(ethers.parseEther("100"));
+            expect(user1BalAfter - user1BalBefore).to.equal(ethers.parseEther("100"));
+            // Allocation updated
+            const alloc = await msvpToken.getVestingAllocation(user1.address);
+            expect(alloc).to.equal(newAmount);
+        });
+
+        it("Should revert modify increase if creator lacks sufficient tokens", async function () {
+            const [owner, , userA, creator] = await ethers.getSigners();
+            const amount = ethers.parseEther("10");
+            // Transfer small amount to creator and let creator create schedule
+            const seed = ethers.parseEther("50");
+            await msvpToken.transfer(creator.address, seed);
+            await msvpToken.grantSubadminRole(creator.address);
+            await msvpToken.connect(creator).createVestingSchedule(userA.address, amount);
+            // Try to bump by more than creator balance
+            const tooHigh = amount + seed + ethers.parseEther("1");
+            await expect(msvpToken.connect(creator).modifyVestingSchedule(userA.address, tooHigh))
+                .to.be.revertedWith("Insufficient tokens for increase");
+        });
+
+        it("Should allow decreasing allocation not below unlocked without transfer", async function () {
+            const amount = TEST_AMOUNT / BigInt(10);
+            await msvpToken.createVestingSchedule(user1.address, amount);
+            // Advance to unlock some tokens
+            await time.increase(7 * MONTH_IN_SECONDS);
+            await msvpToken.updateUnlockedAmountsForUser(user1.address);
+            const unlocked = await msvpToken.getUnlockedAmount(user1.address);
+            const lower = unlocked; // decrease to exactly unlocked
+            await expect(msvpToken.modifyVestingSchedule(user1.address, lower)).to.emit(msvpToken, "VestingScheduleModified");
+            // No transfer on decrease
+            const locked = await msvpToken.getLockedAmount(user1.address);
+            expect(locked).to.equal(0); // since total == unlocked now
         });
     });
 });

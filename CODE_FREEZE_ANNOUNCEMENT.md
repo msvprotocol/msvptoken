@@ -84,7 +84,7 @@ The `release-audit` branch is protected with:
 - **Code Quality**: Clean, compiled, style-compliant
 - **Security Features**: ReentrancyGuard, Pausable, AccessControl
 
-## 📞 Contact Information
+##  Contact Information
 - **Repository**: https://github.com/blockintelligence/msvtoken
 - **Audit Branch**: `release-audit`
 - **Documentation**: `AUDIT_PREPARATION.md`

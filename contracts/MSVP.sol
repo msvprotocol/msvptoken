@@ -1,74 +1,78 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.30;
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/access/AccessControl.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/security/Pausable.sol";
-
+import '@openzeppelin/contracts/token/ERC20/ERC20.sol';
+import '@openzeppelin/contracts/access/Ownable2Step.sol';
+import '@openzeppelin/contracts/access/AccessControl.sol';
+import '@openzeppelin/contracts/security/ReentrancyGuard.sol';
+import '@openzeppelin/contracts/security/Pausable.sol';
 
 /**
  * @title MSVTokenVesting
  * @dev MetaSoilVerse Token with integrated vesting functionality based on precise tokenomics schedule
  * Locked tokens are visible in balance but non-transferable
  */
-contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable, AccessControl {
+contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
     // Token configuration
-    uint256 public constant TOTAL_SUPPLY = 100_000_000_000 * 10**18; // 100 billion tokens
-    uint256 public constant AIRDROP_SUPPLY = 50_000_000_000 * 10**18; // 50 billion tokens for airdrop
+    uint256 public constant TOTAL_SUPPLY = 100_000_000_000 * 10 ** 18; // 100 billion tokens
+    uint256 public constant AIRDROP_SUPPLY = 50_000_000_000 * 10 ** 18; // 50 billion tokens for airdrop
     uint256 public constant MAX_TAX_RATE = 100; // Maximum 10% tax
     uint256 public constant TAX_DENOMINATOR = 1000; // Tax precision (0.1%)
-    
+
     // Transfer tax configuration
     uint256 public transferTaxRate = 50; // 5% transfer tax
     uint256 public lpContributionRate = 20; // 2% to LP
     uint256 public developmentRate = 15; // 1.5% development fee
     uint256 public marketingRate = 10; // 1% marketing
     uint256 public burnRate = 5; // 0.5% burn
-    
+
     // Addresses
     address public lpWallet;
     address public marketingWallet;
     address public developmentWallet;
-    
+    address public treasuryWallet; // receives residual tax when burnRate is zero
+
     // Excluded addresses from tax
     mapping(address => bool) public isExcludedFromTax;
     mapping(address => bool) public isExcludedFromMaxTx;
-    
+
     // Max transaction limit
     uint256 public maxTxAmount = TOTAL_SUPPLY / 100; // 1% of total supply
-    
+
     // Role-based access control
-    bytes32 public constant SUBADMIN_ROLE = keccak256("SUBADMIN_ROLE");
-    
+    bytes32 public constant SUBADMIN_ROLE = keccak256('SUBADMIN_ROLE');
+
     // Vesting configuration based on tokenomics schedule
     uint256 public constant CLIFF_DURATION = 180 days; // 6 months cliff
     uint256 public constant FIRST_YEAR_UNLOCK_PERCENTAGE = 12; // 1.2% (12/1000)
     uint256 public constant POST_Q5_UNLOCK_PERCENTAGE = 70; // 7% (70/1000)
     uint256 public constant FINAL_UNLOCK_PERCENTAGE = 60; // 6% (60/1000)
-    
+
     // Vesting schedule per user
     struct VestingSchedule {
-        uint256 totalAmount;           // Total tokens allocated for vesting
-        uint256 unlockedAmount;        // Amount already unlocked
-        uint256 startTime;             // Vesting start time (TGE)
-        uint256 endTime;               // Vesting end time
-        bool isActive;                 // Whether vesting is active
-        bool isAirdrop;                // Whether this is from airdrop
+        uint256 totalAmount; // Total tokens allocated for vesting
+        uint256 unlockedAmount; // Amount already unlocked
+        uint256 startTime; // Vesting start time (TGE)
+        uint256 endTime; // Vesting end time
+        bool isActive; // Whether vesting is active
+        bool isAirdrop; // Whether this is from airdrop
+        address creator; // Address that created this schedule and can modify it
+        bool isCancelled; // Whether this schedule was permanently cancelled
     }
-    
-    // Mapping from user address to vesting schedule
+
+    // Mapping from user address to vesting schedule (latest schedule for backward compatibility)
     mapping(address => VestingSchedule) public vestingSchedules;
-    
+    // Mapping from user address to all vesting schedules (supports multiple schedules per user)
+    mapping(address => VestingSchedule[]) public userVestingSchedules;
+
     // Arrays to track all participants
     address[] public participants;
     mapping(address => bool) public isParticipant;
-    
+
     // Admin controls
     uint256 public totalAllocated = 0;
     uint256 public totalUnlocked = 0;
-    
+
     // Events
     event TransferTaxUpdated(uint256 newTaxRate);
     event LPContributionRateUpdated(uint256 newRate);
@@ -78,16 +82,15 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable, AccessControl {
     event LPWalletUpdated(address newWallet);
     event MarketingWalletUpdated(address newWallet);
     event DevelopmentWalletUpdated(address newWallet);
+    event TreasuryWalletUpdated(address newWallet);
     event MaxTxAmountUpdated(uint256 newAmount);
     event TaxExclusionUpdated(address account, bool excluded);
     event MaxTxExclusionUpdated(address account, bool excluded);
-    
+
     // Vesting events
     event VestingScheduleCreated(address indexed user, uint256 amount, uint256 startTime, uint256 endTime);
     event TokensUnlocked(address indexed user, uint256 amount, uint256 timestamp);
     event VestingScheduleModified(address indexed user, uint256 newAmount, uint256 timestamp);
-    event VestingPaused(uint256 timestamp);
-    event VestingUnpaused(uint256 timestamp);
     event EarlyRelease(address indexed user, uint256 amount, uint256 timestamp);
     event EmergencyUnlockAll(address indexed user, uint256 amount, uint256 timestamp);
     event VestingScheduleDeactivated(address indexed user, uint256 timestamp);
@@ -95,79 +98,95 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable, AccessControl {
     event VestingScheduleCancelled(address indexed user, uint256 lockedAmount, uint256 timestamp);
     event AirdropStatusToggled(address indexed user, bool isAirdrop, uint256 timestamp);
     event VestingScheduleCompleted(address indexed user, uint256 totalAmount, uint256 timestamp);
-    event VestingInconsistencyDetected(address indexed user, uint256 recordedAmount, uint256 calculatedAmount, uint256 timestamp);
+    event VestingInconsistencyDetected(
+        address indexed user,
+        uint256 recordedAmount,
+        uint256 calculatedAmount,
+        uint256 timestamp
+    );
     event TokensTransferredForVesting(address indexed user, uint256 amount, uint256 timestamp);
-    
+
     // Role management events
     event SubadminAdded(address indexed subadmin, address indexed by);
     event SubadminRemoved(address indexed subadmin, address indexed by);
 
-    
     constructor(
         address _lpWallet,
         address _marketingWallet,
         address _developmentWallet
-    ) ERC20("MetaSoilVerseProtocol", "MSVP") {
-        require(_lpWallet != address(0), "Invalid LP wallet");
-        require(_marketingWallet != address(0), "Invalid marketing wallet");
-        require(_developmentWallet != address(0), "Invalid development wallet");
-        
+    ) ERC20('MetaSoilVerseProtocol', 'MSVP') {
+        require(_lpWallet != address(0), 'Invalid LP wallet');
+        require(_marketingWallet != address(0), 'Invalid marketing wallet');
+        require(_developmentWallet != address(0), 'Invalid development wallet');
+
         lpWallet = _lpWallet;
         marketingWallet = _marketingWallet;
         developmentWallet = _developmentWallet;
-        
+        treasuryWallet = _developmentWallet; // default treasury to development wallet
+
         // Exclude owner and contract from tax
         isExcludedFromTax[msg.sender] = true;
         isExcludedFromTax[address(this)] = true;
-        
+
         // Exclude owner and contract from max transaction limit
         isExcludedFromMaxTx[msg.sender] = true;
         isExcludedFromMaxTx[address(this)] = true;
-        
+
         // Mint total supply to owner
         _mint(msg.sender, TOTAL_SUPPLY);
-        
+
         // Set up initial roles
         _grantRole(SUBADMIN_ROLE, msg.sender);
     }
-    
+
     // Role Management Functions
-    
+
     /**
      * @dev Grant subadmin role to an address (only callable by owner)
      */
     function grantSubadminRole(address account) external onlyOwner {
-        require(account != address(0), "Invalid address");
+        require(account != address(0), 'Invalid address');
         _grantRole(SUBADMIN_ROLE, account);
+        // Exclude subadmin from transfer tax to avoid vesting allocation mismatches
+        isExcludedFromTax[account] = true;
         emit SubadminAdded(account, msg.sender);
     }
-    
+
     /**
      * @dev Revoke subadmin role from an address (only callable by owner)
      */
     function revokeSubadminRole(address account) external onlyOwner {
-        require(account != address(0), "Invalid address");
+        require(account != address(0), 'Invalid address');
         _revokeRole(SUBADMIN_ROLE, account);
+        // Remove tax exclusion when subadmin role is revoked
+        isExcludedFromTax[account] = false;
         emit SubadminRemoved(account, msg.sender);
     }
-    
+
+    /**
+     * @dev Update treasury wallet (receiver of residual tax when burn is disabled)
+     */
+    function updateTreasuryWallet(address newWallet) external onlyOwner {
+        require(newWallet != address(0), 'Invalid wallet address');
+        treasuryWallet = newWallet;
+        emit TreasuryWalletUpdated(newWallet);
+    }
+
     /**
      * @dev Check if address has subadmin role
      */
     function hasSubadminRole(address account) external view returns (bool) {
         return hasRole(SUBADMIN_ROLE, account);
     }
-    
+
     /**
-     * @dev Get all addresses with subadmin role
+     * @dev Get all addresses with subadmin role (stub for compatibility)
      */
     function getSubadmins() external pure returns (address[] memory) {
-        // Simplified implementation - returns empty array
-        // In production, you might want to maintain an array of subadmins
         address[] memory subadmins = new address[](0);
         return subadmins;
     }
-    
+
     /**
      * @dev Override balanceOf to show actual token balance
      * This shows the real tokens held in the wallet (including received tokens)
@@ -177,21 +196,24 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable, AccessControl {
         return super.balanceOf(account);
     }
 
-    
     /**
      * @dev Get vesting allocation (total tokens allocated for vesting)
      * This shows the vesting schedule amount, not the actual balance
      */
-    function getVestingAllocation(address account) public view returns (uint256) {
-        if (isParticipant[account]) {
-            VestingSchedule storage schedule = vestingSchedules[account];
-            if (schedule.isActive) {
-                return schedule.totalAmount;
+    function getVestingAllocation(address account) external view returns (uint256) {
+        if (!isParticipant[account]) {
+            return 0;
+        }
+        VestingSchedule[] storage schedules = userVestingSchedules[account];
+        uint256 total = 0;
+        for (uint256 i = 0; i < schedules.length; i++) {
+            if (schedules[i].isActive) {
+                total += schedules[i].totalAmount;
             }
         }
-        return 0;
+        return total;
     }
-    
+
     /**
      * @dev Get transferable balance (unlocked tokens for vesting participants)
      * For vesting participants: returns unlocked vesting tokens + any other unlocked tokens
@@ -202,7 +224,7 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable, AccessControl {
             // For vesting participants: unlocked vesting tokens + any other unlocked tokens
             uint256 totalBalance = super.balanceOf(account);
             uint256 lockedAmount = getLockedAmount(account);
-            
+
             // The correct calculation: total balance - locked amount
             // This automatically includes unlocked vesting + any other tokens
             return totalBalance - lockedAmount;
@@ -211,20 +233,15 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable, AccessControl {
             return super.balanceOf(account);
         }
     }
-    
+
     /**
      * @dev Override transfer to include vesting logic and tax
      */
-    function _transfer(
-        address from,
-        address to,
-        uint256 amount
-    ) internal virtual override whenNotPaused {
+    function _transfer(address from, address to, uint256 amount) internal virtual override whenNotPaused {
+        require(from != address(0), 'ERC20: transfer from the zero address');
+        require(to != address(0), 'ERC20: transfer to the zero address');
+        require(amount > 0, 'Transfer amount must be greater than zero');
 
-        require(from != address(0), "ERC20: transfer from the zero address");
-        require(to != address(0), "ERC20: transfer to the zero address");
-        require(amount > 0, "Transfer amount must be greater than zero");
-        
         // Update unlocked amounts for both addresses if they are participants
         if (isParticipant[from]) {
             updateUnlockedAmountsForUser(from);
@@ -232,38 +249,34 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable, AccessControl {
         if (isParticipant[to]) {
             updateUnlockedAmountsForUser(to);
         }
-        
+
         // Check transferable balance
         uint256 transferable = transferableBalance(from);
-        require(transferable >= amount, "Insufficient transferable balance");
-        
+        require(transferable >= amount, 'Insufficient transferable balance');
+
         // Check max transaction limit (unless excluded)
         if (!isExcludedFromMaxTx[from] && !isExcludedFromMaxTx[to]) {
-            require(amount <= maxTxAmount, "Transfer amount exceeds max transaction limit");
+            require(amount <= maxTxAmount, 'Transfer amount exceeds max transaction limit');
         }
-        
+
         // Calculate tax
         uint256 taxAmount = 0;
         if (transferTaxRate > 0 && !isExcludedFromTax[from] && !isExcludedFromTax[to]) {
             taxAmount = (amount * transferTaxRate) / TAX_DENOMINATOR;
         }
-        
+
         uint256 transferAmount = amount - taxAmount;
-        
 
-        
-
-        
         // Transfer tokens to recipient (amount minus tax)
         super._transfer(from, to, transferAmount);
-        
+
         // Transfer tax to contract if applicable
         if (taxAmount > 0) {
             super._transfer(from, address(this), taxAmount);
             _distributeTaxes(taxAmount);
         }
     }
-    
+
     /**
      * @dev Distribute transfer taxes to different wallets
      */
@@ -272,9 +285,9 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable, AccessControl {
         if (taxAmount == 0) {
             return;
         }
-        
+
         uint256 remainingTax = taxAmount;
-        
+
         // LP contribution
         if (lpContributionRate > 0) {
             uint256 lpAmount = (taxAmount * lpContributionRate) / transferTaxRate;
@@ -283,7 +296,7 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable, AccessControl {
                 remainingTax -= lpAmount;
             }
         }
-        
+
         // Development fee
         if (developmentRate > 0) {
             uint256 developmentAmount = (taxAmount * developmentRate) / transferTaxRate;
@@ -292,7 +305,7 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable, AccessControl {
                 remainingTax -= developmentAmount;
             }
         }
-        
+
         // Marketing
         if (marketingRate > 0) {
             uint256 marketingAmount = (taxAmount * marketingRate) / transferTaxRate;
@@ -301,54 +314,67 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable, AccessControl {
                 remainingTax -= marketingAmount;
             }
         }
-        
-        // Burn remaining tax
-        if (burnRate > 0 && remainingTax > 0) {
-            _burn(address(this), remainingTax);
+
+        // Handle remaining tax
+        if (remainingTax > 0) {
+            if (burnRate > 0) {
+                _burn(address(this), remainingTax);
+            } else {
+                // Redirect residual tax when burn is disabled
+                super._transfer(address(this), treasuryWallet, remainingTax);
+            }
         }
     }
-    
+
     // Vesting Functions
-    
+
     /**
      * @dev Create vesting schedule for a single user
      */
-    function createVestingSchedule(
-        address user,
-        uint256 amount
-    ) external onlyRole(SUBADMIN_ROLE) {
-        require(user != address(0), "Invalid user address");
-        require(amount > 0, "Amount must be greater than zero");
-        require(!vestingSchedules[user].isActive, "Vesting schedule already exists");
-        
-        require(balanceOf(msg.sender) >= amount, "Insufficient tokens for vesting");
+    function createVestingSchedule(address user, uint256 amount) external onlyRole(SUBADMIN_ROLE) {
+        require(user != address(0), 'Invalid user address');
+        require(amount > 0, 'Amount must be greater than zero');
+
+        require(balanceOf(msg.sender) >= amount, 'Insufficient tokens for vesting');
+        // Perform transfer which may apply tax
         _transfer(msg.sender, user, amount);
-        
-        // Emit event for token transfer
-        emit TokensTransferredForVesting(user, amount, block.timestamp);
-        
+
+        // Determine actually credited (post-tax) amount to ensure schedule matches real balance
+        bool taxApplies = (transferTaxRate > 0 && !isExcludedFromTax[msg.sender] && !isExcludedFromTax[user]);
+        uint256 creditedAmount = taxApplies ? (amount - ((amount * transferTaxRate) / TAX_DENOMINATOR)) : amount;
+
+        // Emit event with credited amount used for vesting
+        emit TokensTransferredForVesting(user, creditedAmount, block.timestamp);
+
         uint256 startTime = block.timestamp;
         uint256 endTime = startTime + (61 * 30 days); // 61 months total vesting period
-        
-        vestingSchedules[user] = VestingSchedule({
-            totalAmount: amount,
+
+        VestingSchedule memory newSchedule = VestingSchedule({
+            totalAmount: creditedAmount,
             unlockedAmount: 0,
             startTime: startTime,
             endTime: endTime,
             isActive: true,
-            isAirdrop: true
+            isAirdrop: true,
+            creator: msg.sender,
+            isCancelled: false
         });
-        
+
+        // Store as the latest schedule (backward compatibility)
+        vestingSchedules[user] = newSchedule;
+        // Append to user's schedules (support multiple)
+        userVestingSchedules[user].push(newSchedule);
+
         if (!isParticipant[user]) {
             participants.push(user);
             isParticipant[user] = true;
         }
-        
-        totalAllocated += amount;
-        
-        emit VestingScheduleCreated(user, amount, startTime, endTime);
+
+        totalAllocated += creditedAmount;
+
+        emit VestingScheduleCreated(user, creditedAmount, startTime, endTime);
     }
-    
+
     /**
      * @dev Create multiple vesting schedules from CSV data
      */
@@ -356,318 +382,682 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable, AccessControl {
         address[] calldata users,
         uint256[] calldata amounts
     ) external onlyRole(SUBADMIN_ROLE) {
-        require(users.length == amounts.length, "Arrays length mismatch");
-        require(users.length > 0, "Empty arrays");
-        
+        require(users.length == amounts.length, 'Arrays length mismatch');
+        require(users.length > 0, 'Empty arrays');
+
         uint256 totalTokensNeeded = 0;
         for (uint256 i = 0; i < amounts.length; i++) {
-            if (users[i] != address(0) && amounts[i] > 0 && !vestingSchedules[users[i]].isActive) {
+            if (users[i] != address(0) && amounts[i] > 0) {
                 totalTokensNeeded += amounts[i];
             }
         }
-        require(balanceOf(msg.sender) >= totalTokensNeeded, "Insufficient tokens for bulk vesting");
-        
+        require(balanceOf(msg.sender) >= totalTokensNeeded, 'Insufficient tokens for bulk vesting');
+
         uint256 startTime = block.timestamp;
         uint256 endTime = startTime + (61 * 30 days); // 61 months total vesting period
-        
+
         for (uint256 i = 0; i < users.length; i++) {
-            if (users[i] != address(0) && amounts[i] > 0 && !vestingSchedules[users[i]].isActive) {
+            if (users[i] != address(0) && amounts[i] > 0) {
                 _transfer(msg.sender, users[i], amounts[i]);
-                
-                // Emit event for token transfer
-                emit TokensTransferredForVesting(users[i], amounts[i], block.timestamp);
-                
-                vestingSchedules[users[i]] = VestingSchedule({
-                    totalAmount: amounts[i],
+                // Compute credited (post-tax) amount for vesting allocation
+                bool taxApplies = (transferTaxRate > 0 &&
+                    !isExcludedFromTax[msg.sender] &&
+                    !isExcludedFromTax[users[i]]);
+                uint256 creditedAmount = taxApplies
+                    ? (amounts[i] - ((amounts[i] * transferTaxRate) / TAX_DENOMINATOR))
+                    : amounts[i];
+                emit TokensTransferredForVesting(users[i], creditedAmount, block.timestamp);
+
+                VestingSchedule memory newSchedule = VestingSchedule({
+                    totalAmount: creditedAmount,
                     unlockedAmount: 0,
                     startTime: startTime,
                     endTime: endTime,
                     isActive: true,
-                    isAirdrop: true
+                    isAirdrop: true,
+                    creator: msg.sender,
+                    isCancelled: false
                 });
-                
+
+                // Store as the latest schedule (backward compatibility)
+                vestingSchedules[users[i]] = newSchedule;
+                // Append to user's schedules (support multiple)
+                userVestingSchedules[users[i]].push(newSchedule);
+
                 if (!isParticipant[users[i]]) {
                     participants.push(users[i]);
                     isParticipant[users[i]] = true;
                 }
-                
-                totalAllocated += amounts[i];
-                
-                emit VestingScheduleCreated(users[i], amounts[i], startTime, endTime);
+
+                totalAllocated += creditedAmount;
+
+                emit VestingScheduleCreated(users[i], creditedAmount, startTime, endTime);
             }
         }
     }
-    
+
+    /**
+     * @dev Internal helper to get the index of the latest schedule for a user
+     */
+    function _latestScheduleIndex(address user) internal view returns (bool has, uint256 idx) {
+        uint256 len = userVestingSchedules[user].length;
+        if (len == 0) {
+            return (false, 0);
+        }
+        return (true, len - 1);
+    }
+
+    /**
+     * @dev Internal helper to sync mapping copy with latest array element
+     */
+    function _syncLatestMapping(address user) internal {
+        (bool has, uint256 idx) = _latestScheduleIndex(user);
+        if (has) {
+            vestingSchedules[user] = userVestingSchedules[user][idx];
+        }
+    }
+
     /**
      * @dev Early release of locked tokens
      */
     function earlyRelease(address user, uint256 amount) external onlyOwner {
-        require(vestingSchedules[user].isActive, "No active vesting schedule");
-        require(amount > 0, "Amount must be greater than zero");
-        
-        VestingSchedule storage schedule = vestingSchedules[user];
-        uint256 lockedAmount = getLockedAmount(user);
-        require(amount <= lockedAmount, "Amount exceeds remaining locked tokens");
-        
+        (bool has, uint256 idx) = _latestScheduleIndex(user);
+        require(has, 'No active vesting schedule');
+        require(amount > 0, 'Amount must be greater than zero');
+
+        VestingSchedule storage schedule = userVestingSchedules[user][idx];
+        require(schedule.isActive, 'No active vesting schedule');
+
+        // Compute locked for this schedule only
+        uint256 currentTime = block.timestamp;
+        uint256 vestedForSchedule = 0;
+        if (currentTime >= schedule.startTime) {
+            uint256 timeSinceStart = currentTime - schedule.startTime;
+            uint256 monthsSinceStart = timeSinceStart / (30 * 24 * 60 * 60);
+            if (monthsSinceStart >= 7) {
+                // Phase 1
+                uint256 firstYearUnlocks = 0;
+                if (monthsSinceStart >= 7) firstYearUnlocks++;
+                if (monthsSinceStart >= 10) firstYearUnlocks++;
+                if (monthsSinceStart >= 13) firstYearUnlocks++;
+                if (monthsSinceStart >= 16) firstYearUnlocks++;
+                if (monthsSinceStart >= 19) firstYearUnlocks++;
+                uint256 firstYearAmount = (schedule.totalAmount * FIRST_YEAR_UNLOCK_PERCENTAGE) / 1000;
+                vestedForSchedule += firstYearAmount * firstYearUnlocks;
+                // Phase 2
+                if (monthsSinceStart >= 22) {
+                    uint256 postQ5Unlocks = 0;
+                    for (uint256 month = 22; month <= 49; month += 3) {
+                        if (monthsSinceStart >= month) {
+                            postQ5Unlocks++;
+                        }
+                    }
+                    uint256 postQ5Amount = (schedule.totalAmount * POST_Q5_UNLOCK_PERCENTAGE) / 1000;
+                    vestedForSchedule += postQ5Amount * postQ5Unlocks;
+                }
+                // Phase 3
+                if (monthsSinceStart >= 52) {
+                    uint256 finalUnlocks = 0;
+                    for (uint256 month = 52; month <= 61; month += 3) {
+                        if (monthsSinceStart >= month) {
+                            finalUnlocks++;
+                        }
+                    }
+                    uint256 finalAmount = (schedule.totalAmount * FINAL_UNLOCK_PERCENTAGE) / 1000;
+                    vestedForSchedule += finalAmount * finalUnlocks;
+                }
+                if (vestedForSchedule > schedule.totalAmount) {
+                    vestedForSchedule = schedule.totalAmount;
+                }
+            }
+        }
+        uint256 maxUnlocked = vestedForSchedule > schedule.unlockedAmount ? vestedForSchedule : schedule.unlockedAmount;
+        uint256 lockedAmountForSchedule = schedule.totalAmount > maxUnlocked ? (schedule.totalAmount - maxUnlocked) : 0;
+        require(amount <= lockedAmountForSchedule, 'Amount exceeds remaining locked tokens');
+
         schedule.unlockedAmount += amount;
         totalUnlocked += amount;
-        
+
+        _syncLatestMapping(user);
+
         emit EarlyRelease(user, amount, block.timestamp);
     }
-    
+
     /**
      * @dev Emergency function to unlock ALL remaining tokens for a user
      */
     function emergencyUnlockAll(address user) external onlyOwner {
-        require(vestingSchedules[user].isActive, "No active vesting schedule");
-        
-        VestingSchedule storage schedule = vestingSchedules[user];
-        uint256 lockedAmount = getLockedAmount(user);
-        
-        require(lockedAmount > 0, "No tokens left to unlock");
-        
-        // Unlock all remaining locked tokens
-        schedule.unlockedAmount = schedule.totalAmount;
-        totalUnlocked += lockedAmount;
-        
-        emit EmergencyUnlockAll(user, lockedAmount, block.timestamp);
+        (bool has, ) = _latestScheduleIndex(user);
+        require(has, 'No active vesting schedule');
+
+        VestingSchedule[] storage schedules = userVestingSchedules[user];
+        uint256 totalJustUnlocked = 0;
+        for (uint256 i = 0; i < schedules.length; i++) {
+            VestingSchedule storage schedule = schedules[i];
+            if (!schedule.isActive) {
+                continue;
+            }
+            uint256 totalVested = 0;
+            {
+                // Calculate vested for this schedule
+                if (block.timestamp >= schedule.startTime) {
+                    uint256 timeSinceStart = block.timestamp - schedule.startTime;
+                    uint256 monthsSinceStart = timeSinceStart / (30 * 24 * 60 * 60);
+                    if (monthsSinceStart >= 7) {
+                        uint256 vested = 0;
+                        // Phase 1
+                        if (monthsSinceStart >= 7) {
+                            uint256 firstYearUnlocks = 0;
+                            if (monthsSinceStart >= 7) firstYearUnlocks++;
+                            if (monthsSinceStart >= 10) firstYearUnlocks++;
+                            if (monthsSinceStart >= 13) firstYearUnlocks++;
+                            if (monthsSinceStart >= 16) firstYearUnlocks++;
+                            if (monthsSinceStart >= 19) firstYearUnlocks++;
+                            uint256 firstYearAmount = (schedule.totalAmount * FIRST_YEAR_UNLOCK_PERCENTAGE) / 1000;
+                            vested += firstYearAmount * firstYearUnlocks;
+                        }
+                        // Phase 2
+                        if (monthsSinceStart >= 22) {
+                            uint256 postQ5Unlocks = 0;
+                            for (uint256 month = 22; month <= 49; month += 3) {
+                                if (monthsSinceStart >= month) {
+                                    postQ5Unlocks++;
+                                }
+                            }
+                            uint256 postQ5Amount = (schedule.totalAmount * POST_Q5_UNLOCK_PERCENTAGE) / 1000;
+                            vested += postQ5Amount * postQ5Unlocks;
+                        }
+                        // Phase 3
+                        if (monthsSinceStart >= 52) {
+                            uint256 finalUnlocks = 0;
+                            for (uint256 month = 52; month <= 61; month += 3) {
+                                if (monthsSinceStart >= month) {
+                                    finalUnlocks++;
+                                }
+                            }
+                            uint256 finalAmount = (schedule.totalAmount * FINAL_UNLOCK_PERCENTAGE) / 1000;
+                            vested += finalAmount * finalUnlocks;
+                        }
+                        if (vested > schedule.totalAmount) {
+                            vested = schedule.totalAmount;
+                        }
+                        totalVested = vested;
+                    }
+                }
+            }
+            uint256 maxUnlocked = totalVested > schedule.unlockedAmount ? totalVested : schedule.unlockedAmount;
+            uint256 lockedAmount = schedule.totalAmount > maxUnlocked ? (schedule.totalAmount - maxUnlocked) : 0;
+            if (lockedAmount > 0) {
+                schedule.unlockedAmount = schedule.totalAmount;
+                totalJustUnlocked += lockedAmount;
+                schedule.isActive = false;
+            }
+        }
+        require(totalJustUnlocked > 0, 'No tokens left to unlock');
+        totalUnlocked += totalJustUnlocked;
+        _syncLatestMapping(user);
+
+        emit EmergencyUnlockAll(user, totalJustUnlocked, block.timestamp);
     }
-    
+
     /**
      * @dev Modify existing vesting schedule
      */
-    function modifyVestingSchedule(address user, uint256 newAmount) external onlyOwner {
-        require(vestingSchedules[user].isActive, "No active vesting schedule");
-        require(newAmount >= vestingSchedules[user].unlockedAmount, "New amount less than unlocked");
-        
-        VestingSchedule storage schedule = vestingSchedules[user];
+    function modifyVestingSchedule(address user, uint256 newAmount) external {
+        (bool has, uint256 idx) = _latestScheduleIndex(user);
+        require(has, 'No active vesting schedule');
+        VestingSchedule storage schedule = userVestingSchedules[user][idx];
+        require(schedule.isActive, 'No active vesting schedule');
+        require(msg.sender == schedule.creator, 'Only schedule creator');
+
+        // Recompute vested amount at current timestamp to avoid stale state
+        uint256 currentTime = block.timestamp;
+        uint256 recomputedVested = 0;
+        if (currentTime >= schedule.endTime) {
+            recomputedVested = schedule.totalAmount;
+        } else if (currentTime >= schedule.startTime) {
+            uint256 timeSinceStart = currentTime - schedule.startTime;
+            uint256 monthsSinceStart = timeSinceStart / (30 * 24 * 60 * 60);
+            if (monthsSinceStart >= 7) {
+                // Phase 1
+                uint256 firstYearUnlocks = 0;
+                if (monthsSinceStart >= 7) firstYearUnlocks++;
+                if (monthsSinceStart >= 10) firstYearUnlocks++;
+                if (monthsSinceStart >= 13) firstYearUnlocks++;
+                if (monthsSinceStart >= 16) firstYearUnlocks++;
+                if (monthsSinceStart >= 19) firstYearUnlocks++;
+                recomputedVested += ((schedule.totalAmount * FIRST_YEAR_UNLOCK_PERCENTAGE) / 1000) * firstYearUnlocks;
+                // Phase 2
+                if (monthsSinceStart >= 22) {
+                    uint256 postQ5Unlocks = 0;
+                    for (uint256 month = 22; month <= 49; month += 3) {
+                        if (monthsSinceStart >= month) {
+                            postQ5Unlocks++;
+                        }
+                    }
+                    recomputedVested += ((schedule.totalAmount * POST_Q5_UNLOCK_PERCENTAGE) / 1000) * postQ5Unlocks;
+                }
+                // Phase 3
+                if (monthsSinceStart >= 52) {
+                    uint256 finalUnlocks = 0;
+                    for (uint256 month = 52; month <= 61; month += 3) {
+                        if (monthsSinceStart >= month) {
+                            finalUnlocks++;
+                        }
+                    }
+                    recomputedVested += ((schedule.totalAmount * FINAL_UNLOCK_PERCENTAGE) / 1000) * finalUnlocks;
+                }
+                if (recomputedVested > schedule.totalAmount) {
+                    recomputedVested = schedule.totalAmount;
+                }
+            }
+        }
+        uint256 floorAmount = schedule.unlockedAmount > recomputedVested ? schedule.unlockedAmount : recomputedVested;
+        require(newAmount >= floorAmount, 'New amount less than vested');
+
         uint256 oldAmount = schedule.totalAmount;
-        
+        if (newAmount > oldAmount) {
+            uint256 delta = newAmount - oldAmount;
+            require(balanceOf(msg.sender) >= delta, 'Insufficient tokens for increase');
+            _transfer(msg.sender, user, delta);
+            emit TokensTransferredForVesting(user, delta, block.timestamp);
+        }
+
         schedule.totalAmount = newAmount;
         totalAllocated = totalAllocated - oldAmount + newAmount;
-        
+        _syncLatestMapping(user);
+
+        // Optionally bring unlockedAmount in sync with new total
+        updateUnlockedAmountsForUser(user);
+
         emit VestingScheduleModified(user, newAmount, block.timestamp);
     }
-    
+
     /**
      * @dev Deactivate a vesting schedule (pause vesting without removing)
      */
     function deactivateVestingSchedule(address user) external onlyOwner {
-        require(vestingSchedules[user].isActive, "No active vesting schedule");
-        
-        VestingSchedule storage schedule = vestingSchedules[user];
+        (bool has, uint256 idx) = _latestScheduleIndex(user);
+        require(has, 'No active vesting schedule');
+        VestingSchedule storage schedule = userVestingSchedules[user][idx];
+        require(schedule.isActive, 'No active vesting schedule');
         schedule.isActive = false;
-        
+        _syncLatestMapping(user);
+
         emit VestingScheduleDeactivated(user, block.timestamp);
     }
-    
+
     /**
      * @dev Reactivate a deactivated vesting schedule
      */
     function reactivateVestingSchedule(address user) external onlyOwner {
-        require(!vestingSchedules[user].isActive, "Vesting schedule is already active");
-        require(vestingSchedules[user].startTime != 0, "No vesting schedule exists");
-        
-        VestingSchedule storage schedule = vestingSchedules[user];
+        (bool has, uint256 idx) = _latestScheduleIndex(user);
+        require(has, 'No vesting schedule exists');
+        VestingSchedule storage schedule = userVestingSchedules[user][idx];
+        require(!schedule.isCancelled, 'Vesting schedule cancelled');
+        require(!schedule.isActive, 'Vesting schedule is already active');
+        require(schedule.startTime != 0, 'No vesting schedule exists');
         schedule.isActive = true;
-        
+        _syncLatestMapping(user);
+
         emit VestingScheduleReactivated(user, block.timestamp);
     }
-    
+
     /**
      * @dev Cancel a vesting schedule completely (emergency function)
      * This will stop all future vesting and mark the schedule as inactive
      */
     function cancelVestingSchedule(address user) external onlyOwner {
-        require(vestingSchedules[user].isActive, "No active vesting schedule");
-        
-        VestingSchedule storage schedule = vestingSchedules[user];
-        uint256 lockedAmount = getLockedAmount(user);
-        
-        // Mark as inactive
+        (bool has, uint256 idx) = _latestScheduleIndex(user);
+        require(has, 'No active vesting schedule');
+        VestingSchedule storage schedule = userVestingSchedules[user][idx];
+        require(schedule.isActive, 'No active vesting schedule');
+
+        // Compute locked for this schedule only
+        uint256 currentTime = block.timestamp;
+        uint256 vestedForSchedule = 0;
+        if (currentTime >= schedule.startTime) {
+            uint256 timeSinceStart = currentTime - schedule.startTime;
+            uint256 monthsSinceStart = timeSinceStart / (30 * 24 * 60 * 60);
+            if (monthsSinceStart >= 7) {
+                uint256 firstYearUnlocks = 0;
+                if (monthsSinceStart >= 7) firstYearUnlocks++;
+                if (monthsSinceStart >= 10) firstYearUnlocks++;
+                if (monthsSinceStart >= 13) firstYearUnlocks++;
+                if (monthsSinceStart >= 16) firstYearUnlocks++;
+                if (monthsSinceStart >= 19) firstYearUnlocks++;
+                uint256 firstYearAmount = (schedule.totalAmount * FIRST_YEAR_UNLOCK_PERCENTAGE) / 1000;
+                vestedForSchedule += firstYearAmount * firstYearUnlocks;
+                if (monthsSinceStart >= 22) {
+                    uint256 postQ5Unlocks = 0;
+                    for (uint256 month = 22; month <= 49; month += 3) {
+                        if (monthsSinceStart >= month) {
+                            postQ5Unlocks++;
+                        }
+                    }
+                    uint256 postQ5Amount = (schedule.totalAmount * POST_Q5_UNLOCK_PERCENTAGE) / 1000;
+                    vestedForSchedule += postQ5Amount * postQ5Unlocks;
+                }
+                if (monthsSinceStart >= 52) {
+                    uint256 finalUnlocks = 0;
+                    for (uint256 month = 52; month <= 61; month += 3) {
+                        if (monthsSinceStart >= month) {
+                            finalUnlocks++;
+                        }
+                    }
+                    uint256 finalAmount = (schedule.totalAmount * FINAL_UNLOCK_PERCENTAGE) / 1000;
+                    vestedForSchedule += finalAmount * finalUnlocks;
+                }
+                if (vestedForSchedule > schedule.totalAmount) {
+                    vestedForSchedule = schedule.totalAmount;
+                }
+            }
+        }
+        uint256 maxUnlocked = vestedForSchedule > schedule.unlockedAmount ? vestedForSchedule : schedule.unlockedAmount;
+        uint256 lockedAmount = schedule.totalAmount > maxUnlocked ? (schedule.totalAmount - maxUnlocked) : 0;
+
+        // Mark as inactive and permanently cancelled
         schedule.isActive = false;
-        
+        schedule.isCancelled = true;
+        schedule.startTime = 0;
+        schedule.endTime = 0;
+
         // Reduce total allocated by the locked amount
         totalAllocated -= lockedAmount;
-        
+        _syncLatestMapping(user);
+
         emit VestingScheduleCancelled(user, lockedAmount, block.timestamp);
     }
-    
+
     /**
      * @dev Toggle airdrop status for a user
      */
     function toggleAirdropStatus(address user) external onlyOwner {
-        require(vestingSchedules[user].isActive, "No active vesting schedule");
-        
-        VestingSchedule storage schedule = vestingSchedules[user];
+        (bool has, uint256 idx) = _latestScheduleIndex(user);
+        require(has, 'No active vesting schedule');
+        VestingSchedule storage schedule = userVestingSchedules[user][idx];
+        require(schedule.isActive, 'No active vesting schedule');
         schedule.isAirdrop = !schedule.isAirdrop;
-        
+        _syncLatestMapping(user);
+
         emit AirdropStatusToggled(user, schedule.isAirdrop, block.timestamp);
     }
-    
+
     /**
      * @dev Update unlocked amounts for all participants (gas expensive)
      */
     function updateUnlockedAmounts() external onlyOwner {
-        for (uint256 i = 0; i < participants.length; i++) {
+        uint256 participantsLength = participants.length;
+        for (uint256 i = 0; i < participantsLength; i++) {
             updateUnlockedAmountsForUser(participants[i]);
         }
     }
-    
+
     /**
      * @dev Update unlocked amounts for a specific user (gas efficient)
      */
     function updateUnlockedAmountsForUser(address user) public {
-        VestingSchedule storage schedule = vestingSchedules[user];
-        
-        if (!schedule.isActive || schedule.startTime == 0) {
-            return;
-        }
-        
-        uint256 newUnlockedAmount = getVestedAmount(user);
-        
-        if (newUnlockedAmount > schedule.unlockedAmount) {
-            uint256 additionalUnlocked = newUnlockedAmount - schedule.unlockedAmount;
-            schedule.unlockedAmount = newUnlockedAmount;
-            totalUnlocked += additionalUnlocked;
-            
-            emit TokensUnlocked(user, additionalUnlocked, block.timestamp);
-        } else if (newUnlockedAmount < schedule.unlockedAmount) {
-            // Log inconsistency but don't decrease unlocked amount
-            emit VestingInconsistencyDetected(user, schedule.unlockedAmount, newUnlockedAmount, block.timestamp);
-        }
-        
-        // Check if vesting is complete and auto-deactivate
-        if (newUnlockedAmount >= schedule.totalAmount && schedule.isActive) {
-            // Ensure unlocked amount matches vested amount for complete schedules
-            if (schedule.unlockedAmount < newUnlockedAmount) {
+        VestingSchedule[] storage schedules = userVestingSchedules[user];
+
+        for (uint256 i = 0; i < schedules.length; i++) {
+            VestingSchedule storage schedule = schedules[i];
+
+            if (!schedule.isActive || schedule.startTime == 0) {
+                continue;
+            }
+
+            // Calculate vested amount for this schedule
+            uint256 currentTime = block.timestamp;
+            if (currentTime < schedule.startTime) {
+                continue;
+            }
+            // If end time passed, fully vest
+            if (currentTime >= schedule.endTime) {
+                if (schedule.unlockedAmount < schedule.totalAmount) {
+                    uint256 additional = schedule.totalAmount - schedule.unlockedAmount;
+                    schedule.unlockedAmount = schedule.totalAmount;
+                    totalUnlocked += additional;
+                    emit TokensUnlocked(user, additional, block.timestamp);
+                }
+                schedule.isActive = false;
+                emit VestingScheduleCompleted(user, schedule.totalAmount, block.timestamp);
+                continue;
+            }
+            uint256 timeSinceStart = currentTime - schedule.startTime;
+            uint256 monthsSinceStart = timeSinceStart / (30 * 24 * 60 * 60);
+
+            uint256 newUnlockedAmount = 0;
+            if (monthsSinceStart >= 7) {
+                uint256 totalVested = 0;
+                // Phase 1: 1.2% at months 7,10,13,16,19
+                uint256 firstYearUnlocks = 0;
+                if (monthsSinceStart >= 7) firstYearUnlocks++;
+                if (monthsSinceStart >= 10) firstYearUnlocks++;
+                if (monthsSinceStart >= 13) firstYearUnlocks++;
+                if (monthsSinceStart >= 16) firstYearUnlocks++;
+                if (monthsSinceStart >= 19) firstYearUnlocks++;
+                uint256 firstYearAmount = (schedule.totalAmount * FIRST_YEAR_UNLOCK_PERCENTAGE) / 1000;
+                totalVested += firstYearAmount * firstYearUnlocks;
+
+                // Phase 2: 7% every 3 months from 22 to 49
+                if (monthsSinceStart >= 22) {
+                    uint256 postQ5Unlocks = 0;
+                    for (uint256 month = 22; month <= 49; month += 3) {
+                        if (monthsSinceStart >= month) {
+                            postQ5Unlocks++;
+                        }
+                    }
+                    uint256 postQ5Amount = (schedule.totalAmount * POST_Q5_UNLOCK_PERCENTAGE) / 1000;
+                    totalVested += postQ5Amount * postQ5Unlocks;
+                }
+
+                // Phase 3: 6% every 3 months from 52 to 61
+                if (monthsSinceStart >= 52) {
+                    uint256 finalUnlocks = 0;
+                    for (uint256 month = 52; month <= 61; month += 3) {
+                        if (monthsSinceStart >= month) {
+                            finalUnlocks++;
+                        }
+                    }
+                    uint256 finalAmount = (schedule.totalAmount * FINAL_UNLOCK_PERCENTAGE) / 1000;
+                    totalVested += finalAmount * finalUnlocks;
+                }
+
+                if (totalVested > schedule.totalAmount) {
+                    totalVested = schedule.totalAmount;
+                }
+                newUnlockedAmount = totalVested;
+            }
+
+            if (newUnlockedAmount > schedule.unlockedAmount) {
                 uint256 additionalUnlocked = newUnlockedAmount - schedule.unlockedAmount;
                 schedule.unlockedAmount = newUnlockedAmount;
                 totalUnlocked += additionalUnlocked;
-                
+
                 emit TokensUnlocked(user, additionalUnlocked, block.timestamp);
+            } else if (newUnlockedAmount < schedule.unlockedAmount) {
+                // Log inconsistency but don't decrease unlocked amount
+                emit VestingInconsistencyDetected(user, schedule.unlockedAmount, newUnlockedAmount, block.timestamp);
             }
-            
-            schedule.isActive = false;
-            emit VestingScheduleCompleted(user, schedule.totalAmount, block.timestamp);
+
+            // Complete schedule if fully vested
+            if (newUnlockedAmount >= schedule.totalAmount && schedule.isActive) {
+                schedule.isActive = false;
+                emit VestingScheduleCompleted(user, schedule.totalAmount, block.timestamp);
+            }
         }
+        _syncLatestMapping(user);
     }
-    
+
     /**
      * @dev Get vested amount for a user based on precise tokenomics schedule
-     * Schedule: 6-month cliff, then alternating unlocks every 3-4 months
-     * Phase 1 (Months 7-19): 1.2% every 3 months = 600M tokens per unlock
-     * Phase 2 (Months 22-49): 7% every 3 months = 3.5B tokens per unlock  
-     * Phase 3 (Months 52-61): 6% every 3 months = 3B tokens per unlock
+     * Aggregates across all schedules
      */
     function getVestedAmount(address user) public view returns (uint256) {
-        VestingSchedule storage schedule = vestingSchedules[user];
-        
-        if (!schedule.isActive || schedule.startTime == 0) {
-            return 0;
-        }
-        
-        uint256 currentTime = block.timestamp;
-        
-        if (currentTime < schedule.startTime) {
-            return 0;
-        }
-        
-        // Calculate time since start in months (30 days = 1 month)
-        uint256 timeSinceStart = currentTime - schedule.startTime;
-        uint256 monthsSinceStart = timeSinceStart / (30 * 24 * 60 * 60); // 30 days in seconds
-        
-        // 6-month cliff period (months 0-6)
-        if (monthsSinceStart < 7) {
-            return 0;
-        }
-        
-        uint256 totalVested = 0;
-        
-        // Phase 1: First year releases (months 7-19) - 1.2% every 3 months
-        if (monthsSinceStart >= 7) {
-            uint256 firstYearUnlocks = 0;
-            if (monthsSinceStart >= 7) firstYearUnlocks++;  // Month 7
-            if (monthsSinceStart >= 10) firstYearUnlocks++; // Month 10
-            if (monthsSinceStart >= 13) firstYearUnlocks++; // Month 13
-            if (monthsSinceStart >= 16) firstYearUnlocks++; // Month 16
-            if (monthsSinceStart >= 19) firstYearUnlocks++; // Month 19
-            
-            uint256 firstYearAmount = (schedule.totalAmount * FIRST_YEAR_UNLOCK_PERCENTAGE) / 1000;
-            totalVested += firstYearAmount * firstYearUnlocks;
-        }
-        
-        // Phase 2: Post-Q5 releases (months 22-49) - 7% every 3 months
-        if (monthsSinceStart >= 22) {
-            uint256 postQ5Unlocks = 0;
-            for (uint256 month = 22; month <= 49; month += 3) {
-                if (monthsSinceStart >= month) {
-                    postQ5Unlocks++;
-                }
+        VestingSchedule[] storage schedules = userVestingSchedules[user];
+        uint256 aggregateVested = 0;
+
+        for (uint256 i = 0; i < schedules.length; i++) {
+            VestingSchedule storage schedule = schedules[i];
+            if (!schedule.isActive || schedule.startTime == 0) {
+                continue;
             }
-            
-            uint256 postQ5Amount = (schedule.totalAmount * POST_Q5_UNLOCK_PERCENTAGE) / 1000;
-            totalVested += postQ5Amount * postQ5Unlocks;
-        }
-        
-        // Phase 3: Final releases (months 52-61) - 6% every 3 months
-        if (monthsSinceStart >= 52) {
-            uint256 finalUnlocks = 0;
-            for (uint256 month = 52; month <= 61; month += 3) {
-                if (monthsSinceStart >= month) {
-                    finalUnlocks++;
-                }
+            uint256 currentTime = block.timestamp;
+            if (currentTime < schedule.startTime) {
+                continue;
             }
-            
-            uint256 finalAmount = (schedule.totalAmount * FINAL_UNLOCK_PERCENTAGE) / 1000;
-            totalVested += finalAmount * finalUnlocks;
+            // If schedule has reached or passed its end time, consider it fully vested
+            if (currentTime >= schedule.endTime) {
+                aggregateVested += schedule.totalAmount;
+                continue;
+            }
+            uint256 timeSinceStart = currentTime - schedule.startTime;
+            uint256 monthsSinceStart = timeSinceStart / (30 * 24 * 60 * 60);
+
+            if (monthsSinceStart < 7) {
+                continue;
+            }
+
+            uint256 totalVested = 0;
+            // Phase 1
+            if (monthsSinceStart >= 7) {
+                uint256 firstYearUnlocks = 0;
+                if (monthsSinceStart >= 7) firstYearUnlocks++;
+                if (monthsSinceStart >= 10) firstYearUnlocks++;
+                if (monthsSinceStart >= 13) firstYearUnlocks++;
+                if (monthsSinceStart >= 16) firstYearUnlocks++;
+                if (monthsSinceStart >= 19) firstYearUnlocks++;
+                uint256 firstYearAmount = (schedule.totalAmount * FIRST_YEAR_UNLOCK_PERCENTAGE) / 1000;
+                totalVested += firstYearAmount * firstYearUnlocks;
+            }
+            // Phase 2
+            if (monthsSinceStart >= 22) {
+                uint256 postQ5Unlocks = 0;
+                for (uint256 month = 22; month <= 49; month += 3) {
+                    if (monthsSinceStart >= month) {
+                        postQ5Unlocks++;
+                    }
+                }
+                uint256 postQ5Amount = (schedule.totalAmount * POST_Q5_UNLOCK_PERCENTAGE) / 1000;
+                totalVested += postQ5Amount * postQ5Unlocks;
+            }
+            // Phase 3
+            if (monthsSinceStart >= 52) {
+                uint256 finalUnlocks = 0;
+                for (uint256 month = 52; month <= 61; month += 3) {
+                    if (monthsSinceStart >= month) {
+                        finalUnlocks++;
+                    }
+                }
+                uint256 finalAmount = (schedule.totalAmount * FINAL_UNLOCK_PERCENTAGE) / 1000;
+                totalVested += finalAmount * finalUnlocks;
+            }
+            if (totalVested > schedule.totalAmount) {
+                totalVested = schedule.totalAmount;
+            }
+            aggregateVested += totalVested;
         }
-        
-        // Ensure we don't exceed total amount
-        if (totalVested > schedule.totalAmount) {
-            totalVested = schedule.totalAmount;
-        }
-        
-        return totalVested;
+
+        return aggregateVested;
     }
-    
+
     /**
      * @dev Get unlocked amount for a user
-     * Returns the stored unlocked amount (updated by updateUnlockedAmountsForUser)
+     * Returns the stored unlocked amount across all schedules
      */
-    function getUnlockedAmount(address user) public view returns (uint256) {
-        return vestingSchedules[user].unlockedAmount;
+    function getUnlockedAmount(address user) external view returns (uint256) {
+        VestingSchedule[] storage schedules = userVestingSchedules[user];
+        uint256 total = 0;
+        for (uint256 i = 0; i < schedules.length; i++) {
+            total += schedules[i].unlockedAmount;
+        }
+        return total;
     }
-    
+
     /**
-     * @dev Get locked amount for a user
+     * @dev Get locked amount for a user (sum across all active schedules)
      */
     function getLockedAmount(address user) public view returns (uint256) {
-        VestingSchedule storage schedule = vestingSchedules[user];
-        if (!schedule.isActive) {
-            return 0;
+        VestingSchedule[] storage schedules = userVestingSchedules[user];
+        uint256 totalLocked = 0;
+
+        for (uint256 i = 0; i < schedules.length; i++) {
+            VestingSchedule storage schedule = schedules[i];
+            if (!schedule.isActive) {
+                continue;
+            }
+            uint256 currentTime = block.timestamp;
+            if (currentTime >= schedule.endTime) {
+                // Fully vested at/after end time
+                continue;
+            }
+            uint256 totalVested = 0;
+            if (currentTime >= schedule.startTime) {
+                uint256 timeSinceStart = currentTime - schedule.startTime;
+                uint256 monthsSinceStart = timeSinceStart / (30 * 24 * 60 * 60);
+                if (monthsSinceStart >= 7) {
+                    // Phase 1
+                    uint256 firstYearUnlocks = 0;
+                    if (monthsSinceStart >= 7) firstYearUnlocks++;
+                    if (monthsSinceStart >= 10) firstYearUnlocks++;
+                    if (monthsSinceStart >= 13) firstYearUnlocks++;
+                    if (monthsSinceStart >= 16) firstYearUnlocks++;
+                    if (monthsSinceStart >= 19) firstYearUnlocks++;
+                    uint256 firstYearAmount = (schedule.totalAmount * FIRST_YEAR_UNLOCK_PERCENTAGE) / 1000;
+                    totalVested += firstYearAmount * firstYearUnlocks;
+                    // Phase 2
+                    if (monthsSinceStart >= 22) {
+                        uint256 postQ5Unlocks = 0;
+                        for (uint256 month = 22; month <= 49; month += 3) {
+                            if (monthsSinceStart >= month) {
+                                postQ5Unlocks++;
+                            }
+                        }
+                        uint256 postQ5Amount = (schedule.totalAmount * POST_Q5_UNLOCK_PERCENTAGE) / 1000;
+                        totalVested += postQ5Amount * postQ5Unlocks;
+                    }
+                    // Phase 3
+                    if (monthsSinceStart >= 52) {
+                        uint256 finalUnlocks = 0;
+                        for (uint256 month = 52; month <= 61; month += 3) {
+                            if (monthsSinceStart >= month) {
+                                finalUnlocks++;
+                            }
+                        }
+                        uint256 finalAmount = (schedule.totalAmount * FINAL_UNLOCK_PERCENTAGE) / 1000;
+                        totalVested += finalAmount * finalUnlocks;
+                    }
+                    if (totalVested > schedule.totalAmount) {
+                        totalVested = schedule.totalAmount;
+                    }
+                }
+            }
+            uint256 userUnlocked = schedule.unlockedAmount;
+            uint256 maxUnlocked = totalVested > userUnlocked ? totalVested : userUnlocked;
+            uint256 lockedAmount = schedule.totalAmount > maxUnlocked ? (schedule.totalAmount - maxUnlocked) : 0;
+            totalLocked += lockedAmount;
         }
-        
-        // Use the maximum of vested (time-based) or unlocked (stored, includes emergency unlocks)
-        uint256 totalVested = getVestedAmount(user);
-        uint256 userUnlocked = schedule.unlockedAmount;
-        uint256 maxUnlocked = totalVested > userUnlocked ? totalVested : userUnlocked;
-        
-        uint256 lockedAmount = schedule.totalAmount - maxUnlocked;
-        return lockedAmount > 0 ? lockedAmount : 0;
+
+        return totalLocked;
     }
-    
+
     /**
      * @dev Get vesting schedule for a user
      */
-    function getVestingSchedule(address user) external view returns (
-        uint256 totalAmount,
-        uint256 unlockedAmount,
-        uint256 startTime,
-        uint256 endTime,
-        bool isActive,
-        bool isAirdrop
-    ) {
+    function getVestingSchedule(
+        address user
+    )
+        external
+        view
+        returns (
+            uint256 totalAmount,
+            uint256 unlockedAmount,
+            uint256 startTime,
+            uint256 endTime,
+            bool isActive,
+            bool isAirdrop
+        )
+    {
         VestingSchedule storage schedule = vestingSchedules[user];
         return (
             schedule.totalAmount,
@@ -678,53 +1068,103 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable, AccessControl {
             schedule.isAirdrop
         );
     }
-    
 
-    
     /**
      * @dev Get all participants
      */
     function getAllParticipants() external view returns (address[] memory) {
         return participants;
     }
-    
+
     /**
      * @dev Get participant count
      */
     function getParticipantCount() external view returns (uint256) {
         return participants.length;
     }
-    
+
     /**
      * @dev Check if a vesting schedule is complete (all tokens unlocked)
      */
     function isVestingComplete(address user) external view returns (bool) {
-        VestingSchedule storage schedule = vestingSchedules[user];
-        
-        if (schedule.startTime == 0) {
+        VestingSchedule[] storage schedules = userVestingSchedules[user];
+
+        if (schedules.length == 0) {
             return false;
         }
-        
-        // For active schedules, check current vested amount
-        if (schedule.isActive) {
-            uint256 vestedAmount = getVestedAmount(user);
-            return vestedAmount >= schedule.totalAmount;
+
+        for (uint256 i = 0; i < schedules.length; i++) {
+            VestingSchedule storage schedule = schedules[i];
+            if (!schedule.isActive) {
+                continue;
+            }
+            uint256 currentTime = block.timestamp;
+            if (currentTime >= schedule.endTime) {
+                // Consider complete at/after end time
+                continue;
+            }
+            if (currentTime < schedule.startTime) {
+                return false;
+            }
+            uint256 timeSinceStart = currentTime - schedule.startTime;
+            uint256 monthsSinceStart = timeSinceStart / (30 * 24 * 60 * 60);
+            if (monthsSinceStart < 7) {
+                return false;
+            }
+            uint256 totalVested = 0;
+            // Phase 1
+            uint256 firstYearUnlocks = 0;
+            if (monthsSinceStart >= 7) firstYearUnlocks++;
+            if (monthsSinceStart >= 10) firstYearUnlocks++;
+            if (monthsSinceStart >= 13) firstYearUnlocks++;
+            if (monthsSinceStart >= 16) firstYearUnlocks++;
+            if (monthsSinceStart >= 19) firstYearUnlocks++;
+            uint256 firstYearAmount = (schedule.totalAmount * FIRST_YEAR_UNLOCK_PERCENTAGE) / 1000;
+            totalVested += firstYearAmount * firstYearUnlocks;
+            // Phase 2
+            if (monthsSinceStart >= 22) {
+                uint256 postQ5Unlocks = 0;
+                for (uint256 month = 22; month <= 49; month += 3) {
+                    if (monthsSinceStart >= month) {
+                        postQ5Unlocks++;
+                    }
+                }
+                uint256 postQ5Amount = (schedule.totalAmount * POST_Q5_UNLOCK_PERCENTAGE) / 1000;
+                totalVested += postQ5Amount * postQ5Unlocks;
+            }
+            // Phase 3
+            if (monthsSinceStart >= 52) {
+                uint256 finalUnlocks = 0;
+                for (uint256 month = 52; month <= 61; month += 3) {
+                    if (monthsSinceStart >= month) {
+                        finalUnlocks++;
+                    }
+                }
+                uint256 finalAmount = (schedule.totalAmount * FINAL_UNLOCK_PERCENTAGE) / 1000;
+                totalVested += finalAmount * finalUnlocks;
+            }
+            if (totalVested < schedule.totalAmount) {
+                return false;
+            }
         }
-        
-        // For deactivated schedules, check if they were completed before deactivation
-        return schedule.unlockedAmount >= schedule.totalAmount;
+
+        return true;
     }
-    
+
     /**
      * @dev Get vesting statistics
      */
-    function getVestingStats() external view returns (
-        uint256 totalParticipants,
-        uint256 totalAllocatedTokens,
-        uint256 totalUnlockedTokens,
-        uint256 remainingTokens,
-        bool isVestingStarted
-    ) {
+    function getVestingStats()
+        external
+        view
+        returns (
+            uint256 totalParticipants,
+            uint256 totalAllocatedTokens,
+            uint256 totalUnlockedTokens,
+            uint256 remainingTokens,
+            bool isVestingStarted
+        )
+    {
         return (
             participants.length,
             totalAllocated,
@@ -733,90 +1173,101 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable, AccessControl {
             participants.length > 0
         );
     }
-    
+
     // Admin functions (inherited from original token)
-    
+
     /**
      * @dev Update transfer tax rate
      */
     function updateTransferTaxRate(uint256 newTaxRate) external onlyOwner {
-        require(newTaxRate <= MAX_TAX_RATE, "Tax rate too high");
+        require(newTaxRate <= MAX_TAX_RATE, 'Tax rate too high');
+        // Ensure component sum does not exceed the new transfer tax rate, unless disabling tax entirely
+        if (newTaxRate > 0) {
+            require(
+                lpContributionRate + developmentRate + marketingRate + burnRate <= newTaxRate,
+                'Components exceed tax rate'
+            );
+        }
         transferTaxRate = newTaxRate;
         emit TransferTaxUpdated(newTaxRate);
     }
-    
+
     /**
      * @dev Update LP contribution rate
      */
     function updateLPContributionRate(uint256 newRate) external onlyOwner {
-        require(newRate <= transferTaxRate, "Rate cannot exceed transfer tax");
+        require(newRate <= transferTaxRate, 'Rate cannot exceed transfer tax');
+        require(newRate + developmentRate + marketingRate + burnRate <= transferTaxRate, 'Components exceed tax rate');
         lpContributionRate = newRate;
         emit LPContributionRateUpdated(newRate);
     }
-    
+
     /**
      * @dev Update development rate
      */
     function updateDevelopmentRate(uint256 newRate) external onlyOwner {
-        require(newRate <= transferTaxRate, "Rate cannot exceed transfer tax");
+        require(newRate <= transferTaxRate, 'Rate cannot exceed transfer tax');
+        require(lpContributionRate + newRate + marketingRate + burnRate <= transferTaxRate, 'Components exceed tax rate');
         developmentRate = newRate;
         emit DevelopmentRateUpdated(newRate);
     }
-    
+
     /**
      * @dev Update marketing rate
      */
     function updateMarketingRate(uint256 newRate) external onlyOwner {
-        require(newRate <= transferTaxRate, "Rate cannot exceed transfer tax");
+        require(newRate <= transferTaxRate, 'Rate cannot exceed transfer tax');
+        require(lpContributionRate + developmentRate + newRate + burnRate <= transferTaxRate, 'Components exceed tax rate');
         marketingRate = newRate;
         emit MarketingRateUpdated(newRate);
     }
-    
+
     /**
      * @dev Update burn rate
      */
     function updateBurnRate(uint256 newRate) external onlyOwner {
-        require(newRate <= transferTaxRate, "Rate cannot exceed transfer tax");
+        require(newRate <= transferTaxRate, 'Rate cannot exceed transfer tax');
+        require(lpContributionRate + developmentRate + marketingRate + newRate <= transferTaxRate, 'Components exceed tax rate');
         burnRate = newRate;
         emit BurnRateUpdated(newRate);
     }
-    
+
     /**
      * @dev Update LP wallet
      */
     function updateLPWallet(address newWallet) external onlyOwner {
-        require(newWallet != address(0), "Invalid wallet address");
+        require(newWallet != address(0), 'Invalid wallet address');
         lpWallet = newWallet;
         emit LPWalletUpdated(newWallet);
     }
-    
+
     /**
      * @dev Update marketing wallet
      */
     function updateMarketingWallet(address newWallet) external onlyOwner {
-        require(newWallet != address(0), "Invalid wallet address");
+        require(newWallet != address(0), 'Invalid wallet address');
         marketingWallet = newWallet;
         emit MarketingWalletUpdated(newWallet);
     }
-    
+
     /**
      * @dev Update development wallet
      */
     function updateDevelopmentWallet(address newWallet) external onlyOwner {
-        require(newWallet != address(0), "Invalid wallet address");
+        require(newWallet != address(0), 'Invalid wallet address');
         developmentWallet = newWallet;
         emit DevelopmentWalletUpdated(newWallet);
     }
-    
+
     /**
      * @dev Update max transaction amount
      */
     function updateMaxTxAmount(uint256 newAmount) external onlyOwner {
-        require(newAmount > 0, "Max tx amount must be greater than zero");
+        require(newAmount > 0, 'Max tx amount must be greater than zero');
         maxTxAmount = newAmount;
         emit MaxTxAmountUpdated(newAmount);
     }
-    
+
     /**
      * @dev Exclude/include address from transfer tax
      */
@@ -824,7 +1275,7 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable, AccessControl {
         isExcludedFromTax[account] = excluded;
         emit TaxExclusionUpdated(account, excluded);
     }
-    
+
     /**
      * @dev Exclude/include address from max transaction limit
      */
@@ -832,61 +1283,53 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable, AccessControl {
         isExcludedFromMaxTx[account] = excluded;
         emit MaxTxExclusionUpdated(account, excluded);
     }
-    
+
     /**
      * @dev Pause token transfers
      */
     function pause() external onlyOwner {
         _pause();
     }
-    
+
     /**
      * @dev Unpause token transfers
      */
     function unpause() external onlyOwner {
         _unpause();
     }
-    
+
     /**
      * @dev Burn admin rights (irreversible)
      */
     function burnAdminRights() external onlyOwner {
         renounceOwnership();
     }
-    
+
     /**
      * @dev Get current tax breakdown
      */
-    function getTaxBreakdown() external view returns (
-        uint256 transferTax,
-        uint256 lpContribution,
-        uint256 development,
-        uint256 marketing,
-        uint256 burn
-    ) {
-        return (
-            transferTaxRate,
-            lpContributionRate,
-            developmentRate,
-            marketingRate,
-            burnRate
-        );
+    function getTaxBreakdown()
+        external
+        view
+        returns (uint256 transferTax, uint256 lpContribution, uint256 development, uint256 marketing, uint256 burn)
+    {
+        return (transferTaxRate, lpContributionRate, developmentRate, marketingRate, burnRate);
     }
-    
+
     /**
      * @dev Check if address is excluded from tax
      */
     function isTaxExcluded(address account) external view returns (bool) {
         return isExcludedFromTax[account];
     }
-    
+
     /**
      * @dev Check if address is excluded from max transaction limit
      */
     function isMaxTxExcluded(address account) external view returns (bool) {
         return isExcludedFromMaxTx[account];
     }
-    
+
     /**
      * @dev Check vesting requirements for bulk operations (view function)
      * @param users Array of user addresses
@@ -899,27 +1342,32 @@ contract MSVP is ERC20, Ownable, ReentrancyGuard, Pausable, AccessControl {
     function checkVestingRequirements(
         address[] calldata users,
         uint256[] calldata amounts
-    ) external view returns (
-        uint256 totalTokensNeeded,
-        uint256 adminBalance,
-        bool canProceed,
-        uint256 validEntries
-    ) {
-        require(users.length == amounts.length, "Arrays length mismatch");
-        
+    ) external view returns (uint256 totalTokensNeeded, uint256 adminBalance, bool canProceed, uint256 validEntries) {
+        require(users.length == amounts.length, 'Arrays length mismatch');
+
         totalTokensNeeded = 0;
         validEntries = 0;
-        
+
         for (uint256 i = 0; i < amounts.length; i++) {
-            if (users[i] != address(0) && amounts[i] > 0 && !vestingSchedules[users[i]].isActive) {
+            if (users[i] != address(0) && amounts[i] > 0) {
                 totalTokensNeeded += amounts[i];
                 validEntries++;
             }
         }
-        
+
         adminBalance = balanceOf(msg.sender);
         canProceed = adminBalance >= totalTokensNeeded;
-        
+
         return (totalTokensNeeded, adminBalance, canProceed, validEntries);
     }
-} 
+
+    /**
+     * @dev Withdraw MSVP tokens held by the contract (e.g., residual taxes)
+     */
+    function withdrawContractTokens(address to, uint256 amount) external onlyOwner {
+        require(to != address(0), 'Invalid address');
+        require(amount > 0, 'Amount must be greater than zero');
+        require(balanceOf(address(this)) >= amount, 'Insufficient contract balance');
+        super._transfer(address(this), to, amount);
+    }
+}

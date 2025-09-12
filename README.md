@@ -496,7 +496,7 @@ function transferableBalance(address account) public view returns (uint256) {
 - **Maximum amount** available for transfers
 - **Real spendable balance**
 
-### 🔐 Vesting System Structure
+###  Vesting System Structure
 
 Each user has a `VestingSchedule` that tracks:
 - **`totalAmount`**: Total tokens allocated (e.g., 1M tokens)
