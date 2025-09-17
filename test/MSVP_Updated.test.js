@@ -1095,22 +1095,22 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
                 // Try to set LP rate to 60% (exceeds 50% total tax)
             await expect(
                     msvpToken.updateLPContributionRate(60)
-                ).to.be.revertedWith("Rate cannot exceed transfer tax");
+                ).to.be.revertedWith("Components exceed tax rate");
                 
                 // Try to set development rate to 55% (exceeds 50% total tax)
                 await expect(
                     msvpToken.updateDevelopmentRate(55)
-                ).to.be.revertedWith("Rate cannot exceed transfer tax");
+                ).to.be.revertedWith("Components exceed tax rate");
                 
                 // Try to set marketing rate to 51% (exceeds 50% total tax)
                 await expect(
                     msvpToken.updateMarketingRate(51)
-                ).to.be.revertedWith("Rate cannot exceed transfer tax");
+                ).to.be.revertedWith("Components exceed tax rate");
                 
                 // Try to set burn rate to 51% (exceeds 50% total tax)
                 await expect(
                     msvpToken.updateBurnRate(51)
-                ).to.be.revertedWith("Rate cannot exceed transfer tax");
+                ).to.be.revertedWith("Components exceed tax rate");
             });
 
             it("Should handle zero component rates correctly", async function () {

@@ -921,7 +921,6 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
      * @dev Update LP contribution rate
      */
     function updateLPContributionRate(uint256 newRate) external onlyOwner {
-        require(newRate <= transferTaxRate, 'Rate cannot exceed transfer tax');
         require(newRate + developmentRate + marketingRate + burnRate <= transferTaxRate, 'Components exceed tax rate');
         lpContributionRate = newRate;
         emit LPContributionRateUpdated(newRate);
@@ -931,7 +930,6 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
      * @dev Update development rate
      */
     function updateDevelopmentRate(uint256 newRate) external onlyOwner {
-        require(newRate <= transferTaxRate, 'Rate cannot exceed transfer tax');
         require(lpContributionRate + newRate + marketingRate + burnRate <= transferTaxRate, 'Components exceed tax rate');
         developmentRate = newRate;
         emit DevelopmentRateUpdated(newRate);
@@ -941,7 +939,6 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
      * @dev Update marketing rate
      */
     function updateMarketingRate(uint256 newRate) external onlyOwner {
-        require(newRate <= transferTaxRate, 'Rate cannot exceed transfer tax');
         require(lpContributionRate + developmentRate + newRate + burnRate <= transferTaxRate, 'Components exceed tax rate');
         marketingRate = newRate;
         emit MarketingRateUpdated(newRate);
@@ -951,7 +948,6 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
      * @dev Update burn rate
      */
     function updateBurnRate(uint256 newRate) external onlyOwner {
-        require(newRate <= transferTaxRate, 'Rate cannot exceed transfer tax');
         require(lpContributionRate + developmentRate + marketingRate + newRate <= transferTaxRate, 'Components exceed tax rate');
         burnRate = newRate;
         emit BurnRateUpdated(newRate);
