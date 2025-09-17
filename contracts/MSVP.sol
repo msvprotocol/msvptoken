@@ -458,6 +458,65 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
     }
 
     /**
+     * @dev Compute the theoretical vested amount for a given schedule at a specific timestamp
+     * Does not read or modify global counters. Caps at schedule.totalAmount.
+     */
+    function _vestedAmountAt(VestingSchedule storage schedule, uint256 timestamp) internal view returns (uint256) {
+        if (timestamp < schedule.startTime) {
+            return 0;
+        }
+        if (timestamp >= schedule.endTime) {
+            return schedule.totalAmount;
+        }
+
+        uint256 timeSinceStart = timestamp - schedule.startTime;
+        uint256 monthsSinceStart = timeSinceStart / (30 * 24 * 60 * 60);
+        if (monthsSinceStart < 7) {
+            return 0;
+        }
+
+        uint256 totalVested = 0;
+        // Phase 1: 1.2% at months 7,10,13,16,19
+        uint256 firstYearUnlocks = 0;
+        if (monthsSinceStart >= 7) firstYearUnlocks++;
+        if (monthsSinceStart >= 10) firstYearUnlocks++;
+        if (monthsSinceStart >= 13) firstYearUnlocks++;
+        if (monthsSinceStart >= 16) firstYearUnlocks++;
+        if (monthsSinceStart >= 19) firstYearUnlocks++;
+        uint256 firstYearAmount = (schedule.totalAmount * FIRST_YEAR_UNLOCK_PERCENTAGE) / 1000;
+        totalVested += firstYearAmount * firstYearUnlocks;
+
+        // Phase 2: 7% every 3 months from 22 to 49
+        if (monthsSinceStart >= 22) {
+            uint256 postQ5Unlocks = 0;
+            for (uint256 month = 22; month <= 49; month += 3) {
+                if (monthsSinceStart >= month) {
+                    postQ5Unlocks++;
+                }
+            }
+            uint256 postQ5Amount = (schedule.totalAmount * POST_Q5_UNLOCK_PERCENTAGE) / 1000;
+            totalVested += postQ5Amount * postQ5Unlocks;
+        }
+
+        // Phase 3: 6% every 3 months from 52 to 61
+        if (monthsSinceStart >= 52) {
+            uint256 finalUnlocks = 0;
+            for (uint256 month = 52; month <= 61; month += 3) {
+                if (monthsSinceStart >= month) {
+                    finalUnlocks++;
+                }
+            }
+            uint256 finalAmount = (schedule.totalAmount * FINAL_UNLOCK_PERCENTAGE) / 1000;
+            totalVested += finalAmount * finalUnlocks;
+        }
+
+        if (totalVested > schedule.totalAmount) {
+            totalVested = schedule.totalAmount;
+        }
+        return totalVested;
+    }
+
+    /**
      * @dev Early release of locked tokens
      */
     function earlyRelease(address user, uint256 amount) external onlyOwner {
@@ -470,47 +529,7 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
 
         // Compute locked for this schedule only
         uint256 currentTime = block.timestamp;
-        uint256 vestedForSchedule = 0;
-        if (currentTime >= schedule.startTime) {
-            uint256 timeSinceStart = currentTime - schedule.startTime;
-            uint256 monthsSinceStart = timeSinceStart / (30 * 24 * 60 * 60);
-            if (monthsSinceStart >= 7) {
-                // Phase 1
-                uint256 firstYearUnlocks = 0;
-                if (monthsSinceStart >= 7) firstYearUnlocks++;
-                if (monthsSinceStart >= 10) firstYearUnlocks++;
-                if (monthsSinceStart >= 13) firstYearUnlocks++;
-                if (monthsSinceStart >= 16) firstYearUnlocks++;
-                if (monthsSinceStart >= 19) firstYearUnlocks++;
-                uint256 firstYearAmount = (schedule.totalAmount * FIRST_YEAR_UNLOCK_PERCENTAGE) / 1000;
-                vestedForSchedule += firstYearAmount * firstYearUnlocks;
-                // Phase 2
-                if (monthsSinceStart >= 22) {
-                    uint256 postQ5Unlocks = 0;
-                    for (uint256 month = 22; month <= 49; month += 3) {
-                        if (monthsSinceStart >= month) {
-                            postQ5Unlocks++;
-                        }
-                    }
-                    uint256 postQ5Amount = (schedule.totalAmount * POST_Q5_UNLOCK_PERCENTAGE) / 1000;
-                    vestedForSchedule += postQ5Amount * postQ5Unlocks;
-                }
-                // Phase 3
-                if (monthsSinceStart >= 52) {
-                    uint256 finalUnlocks = 0;
-                    for (uint256 month = 52; month <= 61; month += 3) {
-                        if (monthsSinceStart >= month) {
-                            finalUnlocks++;
-                        }
-                    }
-                    uint256 finalAmount = (schedule.totalAmount * FINAL_UNLOCK_PERCENTAGE) / 1000;
-                    vestedForSchedule += finalAmount * finalUnlocks;
-                }
-                if (vestedForSchedule > schedule.totalAmount) {
-                    vestedForSchedule = schedule.totalAmount;
-                }
-            }
-        }
+        uint256 vestedForSchedule = _vestedAmountAt(schedule, currentTime);
         uint256 maxUnlocked = vestedForSchedule > schedule.unlockedAmount ? vestedForSchedule : schedule.unlockedAmount;
         uint256 lockedAmountForSchedule = schedule.totalAmount > maxUnlocked ? (schedule.totalAmount - maxUnlocked) : 0;
         require(amount <= lockedAmountForSchedule, 'Amount exceeds remaining locked tokens');
@@ -537,54 +556,7 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
             if (!schedule.isActive) {
                 continue;
             }
-            uint256 totalVested = 0;
-            {
-                // Calculate vested for this schedule
-                if (block.timestamp >= schedule.startTime) {
-                    uint256 timeSinceStart = block.timestamp - schedule.startTime;
-                    uint256 monthsSinceStart = timeSinceStart / (30 * 24 * 60 * 60);
-                    if (monthsSinceStart >= 7) {
-                        uint256 vested = 0;
-                        // Phase 1
-                        if (monthsSinceStart >= 7) {
-                            uint256 firstYearUnlocks = 0;
-                            if (monthsSinceStart >= 7) firstYearUnlocks++;
-                            if (monthsSinceStart >= 10) firstYearUnlocks++;
-                            if (monthsSinceStart >= 13) firstYearUnlocks++;
-                            if (monthsSinceStart >= 16) firstYearUnlocks++;
-                            if (monthsSinceStart >= 19) firstYearUnlocks++;
-                            uint256 firstYearAmount = (schedule.totalAmount * FIRST_YEAR_UNLOCK_PERCENTAGE) / 1000;
-                            vested += firstYearAmount * firstYearUnlocks;
-                        }
-                        // Phase 2
-                        if (monthsSinceStart >= 22) {
-                            uint256 postQ5Unlocks = 0;
-                            for (uint256 month = 22; month <= 49; month += 3) {
-                                if (monthsSinceStart >= month) {
-                                    postQ5Unlocks++;
-                                }
-                            }
-                            uint256 postQ5Amount = (schedule.totalAmount * POST_Q5_UNLOCK_PERCENTAGE) / 1000;
-                            vested += postQ5Amount * postQ5Unlocks;
-                        }
-                        // Phase 3
-                        if (monthsSinceStart >= 52) {
-                            uint256 finalUnlocks = 0;
-                            for (uint256 month = 52; month <= 61; month += 3) {
-                                if (monthsSinceStart >= month) {
-                                    finalUnlocks++;
-                                }
-                            }
-                            uint256 finalAmount = (schedule.totalAmount * FINAL_UNLOCK_PERCENTAGE) / 1000;
-                            vested += finalAmount * finalUnlocks;
-                        }
-                        if (vested > schedule.totalAmount) {
-                            vested = schedule.totalAmount;
-                        }
-                        totalVested = vested;
-                    }
-                }
-            }
+            uint256 totalVested = _vestedAmountAt(schedule, block.timestamp);
             uint256 maxUnlocked = totalVested > schedule.unlockedAmount ? totalVested : schedule.unlockedAmount;
             uint256 lockedAmount = schedule.totalAmount > maxUnlocked ? (schedule.totalAmount - maxUnlocked) : 0;
             if (lockedAmount > 0) {
@@ -612,46 +584,7 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
 
         // Recompute vested amount at current timestamp to avoid stale state
         uint256 currentTime = block.timestamp;
-        uint256 recomputedVested = 0;
-        if (currentTime >= schedule.endTime) {
-            recomputedVested = schedule.totalAmount;
-        } else if (currentTime >= schedule.startTime) {
-            uint256 timeSinceStart = currentTime - schedule.startTime;
-            uint256 monthsSinceStart = timeSinceStart / (30 * 24 * 60 * 60);
-            if (monthsSinceStart >= 7) {
-                // Phase 1
-                uint256 firstYearUnlocks = 0;
-                if (monthsSinceStart >= 7) firstYearUnlocks++;
-                if (monthsSinceStart >= 10) firstYearUnlocks++;
-                if (monthsSinceStart >= 13) firstYearUnlocks++;
-                if (monthsSinceStart >= 16) firstYearUnlocks++;
-                if (monthsSinceStart >= 19) firstYearUnlocks++;
-                recomputedVested += ((schedule.totalAmount * FIRST_YEAR_UNLOCK_PERCENTAGE) / 1000) * firstYearUnlocks;
-                // Phase 2
-                if (monthsSinceStart >= 22) {
-                    uint256 postQ5Unlocks = 0;
-                    for (uint256 month = 22; month <= 49; month += 3) {
-                        if (monthsSinceStart >= month) {
-                            postQ5Unlocks++;
-                        }
-                    }
-                    recomputedVested += ((schedule.totalAmount * POST_Q5_UNLOCK_PERCENTAGE) / 1000) * postQ5Unlocks;
-                }
-                // Phase 3
-                if (monthsSinceStart >= 52) {
-                    uint256 finalUnlocks = 0;
-                    for (uint256 month = 52; month <= 61; month += 3) {
-                        if (monthsSinceStart >= month) {
-                            finalUnlocks++;
-                        }
-                    }
-                    recomputedVested += ((schedule.totalAmount * FINAL_UNLOCK_PERCENTAGE) / 1000) * finalUnlocks;
-                }
-                if (recomputedVested > schedule.totalAmount) {
-                    recomputedVested = schedule.totalAmount;
-                }
-            }
-        }
+        uint256 recomputedVested = _vestedAmountAt(schedule, currentTime);
         uint256 floorAmount = schedule.unlockedAmount > recomputedVested ? schedule.unlockedAmount : recomputedVested;
         require(newAmount >= floorAmount, 'New amount less than vested');
 
@@ -715,44 +648,7 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
 
         // Compute locked for this schedule only
         uint256 currentTime = block.timestamp;
-        uint256 vestedForSchedule = 0;
-        if (currentTime >= schedule.startTime) {
-            uint256 timeSinceStart = currentTime - schedule.startTime;
-            uint256 monthsSinceStart = timeSinceStart / (30 * 24 * 60 * 60);
-            if (monthsSinceStart >= 7) {
-                uint256 firstYearUnlocks = 0;
-                if (monthsSinceStart >= 7) firstYearUnlocks++;
-                if (monthsSinceStart >= 10) firstYearUnlocks++;
-                if (monthsSinceStart >= 13) firstYearUnlocks++;
-                if (monthsSinceStart >= 16) firstYearUnlocks++;
-                if (monthsSinceStart >= 19) firstYearUnlocks++;
-                uint256 firstYearAmount = (schedule.totalAmount * FIRST_YEAR_UNLOCK_PERCENTAGE) / 1000;
-                vestedForSchedule += firstYearAmount * firstYearUnlocks;
-                if (monthsSinceStart >= 22) {
-                    uint256 postQ5Unlocks = 0;
-                    for (uint256 month = 22; month <= 49; month += 3) {
-                        if (monthsSinceStart >= month) {
-                            postQ5Unlocks++;
-                        }
-                    }
-                    uint256 postQ5Amount = (schedule.totalAmount * POST_Q5_UNLOCK_PERCENTAGE) / 1000;
-                    vestedForSchedule += postQ5Amount * postQ5Unlocks;
-                }
-                if (monthsSinceStart >= 52) {
-                    uint256 finalUnlocks = 0;
-                    for (uint256 month = 52; month <= 61; month += 3) {
-                        if (monthsSinceStart >= month) {
-                            finalUnlocks++;
-                        }
-                    }
-                    uint256 finalAmount = (schedule.totalAmount * FINAL_UNLOCK_PERCENTAGE) / 1000;
-                    vestedForSchedule += finalAmount * finalUnlocks;
-                }
-                if (vestedForSchedule > schedule.totalAmount) {
-                    vestedForSchedule = schedule.totalAmount;
-                }
-            }
-        }
+        uint256 vestedForSchedule = _vestedAmountAt(schedule, currentTime);
         uint256 maxUnlocked = vestedForSchedule > schedule.unlockedAmount ? vestedForSchedule : schedule.unlockedAmount;
         uint256 lockedAmount = schedule.totalAmount > maxUnlocked ? (schedule.totalAmount - maxUnlocked) : 0;
 
@@ -808,10 +704,6 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
 
             // Calculate vested amount for this schedule
             uint256 currentTime = block.timestamp;
-            if (currentTime < schedule.startTime) {
-                continue;
-            }
-            // If end time passed, fully vest
             if (currentTime >= schedule.endTime) {
                 if (schedule.unlockedAmount < schedule.totalAmount) {
                     uint256 additional = schedule.totalAmount - schedule.unlockedAmount;
@@ -823,51 +715,7 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
                 emit VestingScheduleCompleted(user, schedule.totalAmount, block.timestamp);
                 continue;
             }
-            uint256 timeSinceStart = currentTime - schedule.startTime;
-            uint256 monthsSinceStart = timeSinceStart / (30 * 24 * 60 * 60);
-
-            uint256 newUnlockedAmount = 0;
-            if (monthsSinceStart >= 7) {
-                uint256 totalVested = 0;
-                // Phase 1: 1.2% at months 7,10,13,16,19
-                uint256 firstYearUnlocks = 0;
-                if (monthsSinceStart >= 7) firstYearUnlocks++;
-                if (monthsSinceStart >= 10) firstYearUnlocks++;
-                if (monthsSinceStart >= 13) firstYearUnlocks++;
-                if (monthsSinceStart >= 16) firstYearUnlocks++;
-                if (monthsSinceStart >= 19) firstYearUnlocks++;
-                uint256 firstYearAmount = (schedule.totalAmount * FIRST_YEAR_UNLOCK_PERCENTAGE) / 1000;
-                totalVested += firstYearAmount * firstYearUnlocks;
-
-                // Phase 2: 7% every 3 months from 22 to 49
-                if (monthsSinceStart >= 22) {
-                    uint256 postQ5Unlocks = 0;
-                    for (uint256 month = 22; month <= 49; month += 3) {
-                        if (monthsSinceStart >= month) {
-                            postQ5Unlocks++;
-                        }
-                    }
-                    uint256 postQ5Amount = (schedule.totalAmount * POST_Q5_UNLOCK_PERCENTAGE) / 1000;
-                    totalVested += postQ5Amount * postQ5Unlocks;
-                }
-
-                // Phase 3: 6% every 3 months from 52 to 61
-                if (monthsSinceStart >= 52) {
-                    uint256 finalUnlocks = 0;
-                    for (uint256 month = 52; month <= 61; month += 3) {
-                        if (monthsSinceStart >= month) {
-                            finalUnlocks++;
-                        }
-                    }
-                    uint256 finalAmount = (schedule.totalAmount * FINAL_UNLOCK_PERCENTAGE) / 1000;
-                    totalVested += finalAmount * finalUnlocks;
-                }
-
-                if (totalVested > schedule.totalAmount) {
-                    totalVested = schedule.totalAmount;
-                }
-                newUnlockedAmount = totalVested;
-            }
+            uint256 newUnlockedAmount = _vestedAmountAt(schedule, currentTime);
 
             if (newUnlockedAmount > schedule.unlockedAmount) {
                 uint256 additionalUnlocked = newUnlockedAmount - schedule.unlockedAmount;
@@ -903,59 +751,7 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
                 continue;
             }
             uint256 currentTime = block.timestamp;
-            if (currentTime < schedule.startTime) {
-                continue;
-            }
-            // If schedule has reached or passed its end time, consider it fully vested
-            if (currentTime >= schedule.endTime) {
-                aggregateVested += schedule.totalAmount;
-                continue;
-            }
-            uint256 timeSinceStart = currentTime - schedule.startTime;
-            uint256 monthsSinceStart = timeSinceStart / (30 * 24 * 60 * 60);
-
-            if (monthsSinceStart < 7) {
-                continue;
-            }
-
-            uint256 totalVested = 0;
-            // Phase 1
-            if (monthsSinceStart >= 7) {
-                uint256 firstYearUnlocks = 0;
-                if (monthsSinceStart >= 7) firstYearUnlocks++;
-                if (monthsSinceStart >= 10) firstYearUnlocks++;
-                if (monthsSinceStart >= 13) firstYearUnlocks++;
-                if (monthsSinceStart >= 16) firstYearUnlocks++;
-                if (monthsSinceStart >= 19) firstYearUnlocks++;
-                uint256 firstYearAmount = (schedule.totalAmount * FIRST_YEAR_UNLOCK_PERCENTAGE) / 1000;
-                totalVested += firstYearAmount * firstYearUnlocks;
-            }
-            // Phase 2
-            if (monthsSinceStart >= 22) {
-                uint256 postQ5Unlocks = 0;
-                for (uint256 month = 22; month <= 49; month += 3) {
-                    if (monthsSinceStart >= month) {
-                        postQ5Unlocks++;
-                    }
-                }
-                uint256 postQ5Amount = (schedule.totalAmount * POST_Q5_UNLOCK_PERCENTAGE) / 1000;
-                totalVested += postQ5Amount * postQ5Unlocks;
-            }
-            // Phase 3
-            if (monthsSinceStart >= 52) {
-                uint256 finalUnlocks = 0;
-                for (uint256 month = 52; month <= 61; month += 3) {
-                    if (monthsSinceStart >= month) {
-                        finalUnlocks++;
-                    }
-                }
-                uint256 finalAmount = (schedule.totalAmount * FINAL_UNLOCK_PERCENTAGE) / 1000;
-                totalVested += finalAmount * finalUnlocks;
-            }
-            if (totalVested > schedule.totalAmount) {
-                totalVested = schedule.totalAmount;
-            }
-            aggregateVested += totalVested;
+            aggregateVested += _vestedAmountAt(schedule, currentTime);
         }
 
         return aggregateVested;
@@ -988,50 +784,9 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
             }
             uint256 currentTime = block.timestamp;
             if (currentTime >= schedule.endTime) {
-                // Fully vested at/after end time
                 continue;
             }
-            uint256 totalVested = 0;
-            if (currentTime >= schedule.startTime) {
-                uint256 timeSinceStart = currentTime - schedule.startTime;
-                uint256 monthsSinceStart = timeSinceStart / (30 * 24 * 60 * 60);
-                if (monthsSinceStart >= 7) {
-                    // Phase 1
-                    uint256 firstYearUnlocks = 0;
-                    if (monthsSinceStart >= 7) firstYearUnlocks++;
-                    if (monthsSinceStart >= 10) firstYearUnlocks++;
-                    if (monthsSinceStart >= 13) firstYearUnlocks++;
-                    if (monthsSinceStart >= 16) firstYearUnlocks++;
-                    if (monthsSinceStart >= 19) firstYearUnlocks++;
-                    uint256 firstYearAmount = (schedule.totalAmount * FIRST_YEAR_UNLOCK_PERCENTAGE) / 1000;
-                    totalVested += firstYearAmount * firstYearUnlocks;
-                    // Phase 2
-                    if (monthsSinceStart >= 22) {
-                        uint256 postQ5Unlocks = 0;
-                        for (uint256 month = 22; month <= 49; month += 3) {
-                            if (monthsSinceStart >= month) {
-                                postQ5Unlocks++;
-                            }
-                        }
-                        uint256 postQ5Amount = (schedule.totalAmount * POST_Q5_UNLOCK_PERCENTAGE) / 1000;
-                        totalVested += postQ5Amount * postQ5Unlocks;
-                    }
-                    // Phase 3
-                    if (monthsSinceStart >= 52) {
-                        uint256 finalUnlocks = 0;
-                        for (uint256 month = 52; month <= 61; month += 3) {
-                            if (monthsSinceStart >= month) {
-                                finalUnlocks++;
-                            }
-                        }
-                        uint256 finalAmount = (schedule.totalAmount * FINAL_UNLOCK_PERCENTAGE) / 1000;
-                        totalVested += finalAmount * finalUnlocks;
-                    }
-                    if (totalVested > schedule.totalAmount) {
-                        totalVested = schedule.totalAmount;
-                    }
-                }
-            }
+            uint256 totalVested = _vestedAmountAt(schedule, currentTime);
             uint256 userUnlocked = schedule.unlockedAmount;
             uint256 maxUnlocked = totalVested > userUnlocked ? totalVested : userUnlocked;
             uint256 lockedAmount = schedule.totalAmount > maxUnlocked ? (schedule.totalAmount - maxUnlocked) : 0;
@@ -1100,49 +855,12 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
             }
             uint256 currentTime = block.timestamp;
             if (currentTime >= schedule.endTime) {
-                // Consider complete at/after end time
                 continue;
             }
             if (currentTime < schedule.startTime) {
                 return false;
             }
-            uint256 timeSinceStart = currentTime - schedule.startTime;
-            uint256 monthsSinceStart = timeSinceStart / (30 * 24 * 60 * 60);
-            if (monthsSinceStart < 7) {
-                return false;
-            }
-            uint256 totalVested = 0;
-            // Phase 1
-            uint256 firstYearUnlocks = 0;
-            if (monthsSinceStart >= 7) firstYearUnlocks++;
-            if (monthsSinceStart >= 10) firstYearUnlocks++;
-            if (monthsSinceStart >= 13) firstYearUnlocks++;
-            if (monthsSinceStart >= 16) firstYearUnlocks++;
-            if (monthsSinceStart >= 19) firstYearUnlocks++;
-            uint256 firstYearAmount = (schedule.totalAmount * FIRST_YEAR_UNLOCK_PERCENTAGE) / 1000;
-            totalVested += firstYearAmount * firstYearUnlocks;
-            // Phase 2
-            if (monthsSinceStart >= 22) {
-                uint256 postQ5Unlocks = 0;
-                for (uint256 month = 22; month <= 49; month += 3) {
-                    if (monthsSinceStart >= month) {
-                        postQ5Unlocks++;
-                    }
-                }
-                uint256 postQ5Amount = (schedule.totalAmount * POST_Q5_UNLOCK_PERCENTAGE) / 1000;
-                totalVested += postQ5Amount * postQ5Unlocks;
-            }
-            // Phase 3
-            if (monthsSinceStart >= 52) {
-                uint256 finalUnlocks = 0;
-                for (uint256 month = 52; month <= 61; month += 3) {
-                    if (monthsSinceStart >= month) {
-                        finalUnlocks++;
-                    }
-                }
-                uint256 finalAmount = (schedule.totalAmount * FINAL_UNLOCK_PERCENTAGE) / 1000;
-                totalVested += finalAmount * finalUnlocks;
-            }
+            uint256 totalVested = _vestedAmountAt(schedule, currentTime);
             if (totalVested < schedule.totalAmount) {
                 return false;
             }
@@ -1196,7 +914,6 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
      * @dev Update LP contribution rate
      */
     function updateLPContributionRate(uint256 newRate) external onlyOwner {
-        require(newRate <= transferTaxRate, 'Rate cannot exceed transfer tax');
         require(newRate + developmentRate + marketingRate + burnRate <= transferTaxRate, 'Components exceed tax rate');
         lpContributionRate = newRate;
         emit LPContributionRateUpdated(newRate);
@@ -1206,7 +923,6 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
      * @dev Update development rate
      */
     function updateDevelopmentRate(uint256 newRate) external onlyOwner {
-        require(newRate <= transferTaxRate, 'Rate cannot exceed transfer tax');
         require(lpContributionRate + newRate + marketingRate + burnRate <= transferTaxRate, 'Components exceed tax rate');
         developmentRate = newRate;
         emit DevelopmentRateUpdated(newRate);
@@ -1216,7 +932,6 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
      * @dev Update marketing rate
      */
     function updateMarketingRate(uint256 newRate) external onlyOwner {
-        require(newRate <= transferTaxRate, 'Rate cannot exceed transfer tax');
         require(lpContributionRate + developmentRate + newRate + burnRate <= transferTaxRate, 'Components exceed tax rate');
         marketingRate = newRate;
         emit MarketingRateUpdated(newRate);
@@ -1226,7 +941,6 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
      * @dev Update burn rate
      */
     function updateBurnRate(uint256 newRate) external onlyOwner {
-        require(newRate <= transferTaxRate, 'Rate cannot exceed transfer tax');
         require(lpContributionRate + developmentRate + marketingRate + newRate <= transferTaxRate, 'Components exceed tax rate');
         burnRate = newRate;
         emit BurnRateUpdated(newRate);
@@ -1301,7 +1015,7 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
     /**
      * @dev Burn admin rights (irreversible)
      */
-    function burnAdminRights() external onlyOwner {
+    function burnAdminRights() external onlyOwner whenNotPaused {
         renounceOwnership();
     }
 
