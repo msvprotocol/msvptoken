@@ -60,7 +60,7 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
         bool isCancelled; // Whether this schedule was permanently cancelled
     }
 
-    // Mapping from user address to vesting schedule (latest schedule for backward compatibility)
+    // Mapping from user address to vesting schedule (latest at creation; kept for backward compatibility only)
     mapping(address => VestingSchedule) public vestingSchedules;
     // Mapping from user address to all vesting schedules (supports multiple schedules per user)
     mapping(address => VestingSchedule[]) public userVestingSchedules;
@@ -327,11 +327,19 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
     }
 
     // Vesting Functions
+    // The contract supports multiple vesting schedules per user.
+    // All admin actions target a specific schedule via its index in `userVestingSchedules[user]`.
+    // The compatibility mapping `vestingSchedules[user]` is set on creation only and is not mutated afterwards.
 
     /**
-     * @dev Create vesting schedule for a single user
+     * @notice Create a vesting schedule for a single user.
+     * @dev Tokens are first transferred (with tax if applicable), then the post-tax credited amount
+     *      is used as the schedule's totalAmount to ensure allocations match the actual received balance.
+     *      The schedule is appended to `userVestingSchedules[user]` and the compatibility mapping is updated once.
+     * @param user Recipient of the vesting schedule
+     * @param amount Gross amount to transfer to the user (pre-tax)
      */
-    function createVestingSchedule(address user, uint256 amount) external onlyRole(SUBADMIN_ROLE) {
+    function createVestingSchedule(address user, uint256 amount) external onlyRole(SUBADMIN_ROLE) nonReentrant {
         require(user != address(0), 'Invalid user address');
         require(amount > 0, 'Amount must be greater than zero');
 
@@ -376,12 +384,14 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
     }
 
     /**
-     * @dev Create multiple vesting schedules from CSV data
+     * @notice Create multiple vesting schedules.
+     * @dev Mirrors `createVestingSchedule` but for arrays; each entry uses the post-tax credited amount
+     *      for the schedule's totalAmount. Invalid entries (zero address or zero amount) are skipped.
      */
     function createVestingSchedules(
         address[] calldata users,
         uint256[] calldata amounts
-    ) external onlyRole(SUBADMIN_ROLE) {
+    ) external onlyRole(SUBADMIN_ROLE) nonReentrant {
         require(users.length == amounts.length, 'Arrays length mismatch');
         require(users.length > 0, 'Empty arrays');
 
@@ -437,7 +447,9 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
     }
 
     /**
-     * @dev Internal helper to get the index of the latest schedule for a user
+     * @dev Internal helper to get the index of the latest schedule for a user.
+     * @return has Whether at least one schedule exists
+     * @return idx Index of the last schedule when it exists
      */
     function _latestScheduleIndex(address user) internal view returns (bool has, uint256 idx) {
         uint256 len = userVestingSchedules[user].length;
@@ -447,19 +459,10 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
         return (true, len - 1);
     }
 
-    /**
-     * @dev Internal helper to sync mapping copy with latest array element
-     */
-    function _syncLatestMapping(address user) internal {
-        (bool has, uint256 idx) = _latestScheduleIndex(user);
-        if (has) {
-            vestingSchedules[user] = userVestingSchedules[user][idx];
-        }
-    }
 
     /**
-     * @dev Compute the theoretical vested amount for a given schedule at a specific timestamp
-     * Does not read or modify global counters. Caps at schedule.totalAmount.
+     * @dev Compute the vested amount for a given schedule at a specific timestamp.
+     *      Purely reads schedule fields and caps at `schedule.totalAmount`.
      */
     function _vestedAmountAt(VestingSchedule storage schedule, uint256 timestamp) internal view returns (uint256) {
         if (timestamp < schedule.startTime) {
@@ -517,17 +520,15 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
     }
 
     /**
-     * @dev Early release of locked tokens
+     * @notice Early release of locked tokens for a specific schedule.
+     * @dev Only owner can call. Amount must not exceed the schedule's remaining locked amount.
      */
-    function earlyRelease(address user, uint256 amount) external onlyOwner {
-        (bool has, uint256 idx) = _latestScheduleIndex(user);
-        require(has, 'No active vesting schedule');
+    function earlyRelease(address user, uint256 index, uint256 amount) external onlyOwner nonReentrant {
+        require(index < userVestingSchedules[user].length, 'Invalid schedule index');
         require(amount > 0, 'Amount must be greater than zero');
-
-        VestingSchedule storage schedule = userVestingSchedules[user][idx];
+        VestingSchedule storage schedule = userVestingSchedules[user][index];
         require(schedule.isActive, 'No active vesting schedule');
 
-        // Compute locked for this schedule only
         uint256 currentTime = block.timestamp;
         uint256 vestedForSchedule = _vestedAmountAt(schedule, currentTime);
         uint256 maxUnlocked = vestedForSchedule > schedule.unlockedAmount ? vestedForSchedule : schedule.unlockedAmount;
@@ -536,16 +537,15 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
 
         schedule.unlockedAmount += amount;
         totalUnlocked += amount;
-
-        _syncLatestMapping(user);
-
+        // mapping unchanged; latest is derived from array on reads
         emit EarlyRelease(user, amount, block.timestamp);
     }
 
     /**
-     * @dev Emergency function to unlock ALL remaining tokens for a user
+     * @notice Emergency unlock of all remaining tokens across all active schedules of a user.
+     * @dev Marks schedules inactive and sets unlockedAmount to totalAmount.
      */
-    function emergencyUnlockAll(address user) external onlyOwner {
+    function emergencyUnlockAll(address user) external onlyOwner nonReentrant {
         (bool has, ) = _latestScheduleIndex(user);
         require(has, 'No active vesting schedule');
 
@@ -567,22 +567,22 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
         }
         require(totalJustUnlocked > 0, 'No tokens left to unlock');
         totalUnlocked += totalJustUnlocked;
-        _syncLatestMapping(user);
+        // mapping unchanged; latest is derived from array on reads
 
         emit EmergencyUnlockAll(user, totalJustUnlocked, block.timestamp);
     }
 
     /**
-     * @dev Modify existing vesting schedule
+     * @notice Modify an existing vesting schedule by index.
+     * @dev Only the creator of the schedule can modify it. Increases transfer delta tokens from creator to user.
+     *      New amount cannot be below the currently vested or previously unlocked amount.
      */
-    function modifyVestingSchedule(address user, uint256 newAmount) external {
-        (bool has, uint256 idx) = _latestScheduleIndex(user);
-        require(has, 'No active vesting schedule');
-        VestingSchedule storage schedule = userVestingSchedules[user][idx];
+    function modifyVestingSchedule(address user, uint256 index, uint256 newAmount) external nonReentrant {
+        require(index < userVestingSchedules[user].length, 'Invalid schedule index');
+        VestingSchedule storage schedule = userVestingSchedules[user][index];
         require(schedule.isActive, 'No active vesting schedule');
         require(msg.sender == schedule.creator, 'Only schedule creator');
 
-        // Recompute vested amount at current timestamp to avoid stale state
         uint256 currentTime = block.timestamp;
         uint256 recomputedVested = _vestedAmountAt(schedule, currentTime);
         uint256 floorAmount = schedule.unlockedAmount > recomputedVested ? schedule.unlockedAmount : recomputedVested;
@@ -598,96 +598,86 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
 
         schedule.totalAmount = newAmount;
         totalAllocated = totalAllocated - oldAmount + newAmount;
-        _syncLatestMapping(user);
-
-        // Optionally bring unlockedAmount in sync with new total
+        // mapping unchanged; latest is derived from array on reads
         updateUnlockedAmountsForUser(user);
-
         emit VestingScheduleModified(user, newAmount, block.timestamp);
     }
 
     /**
-     * @dev Deactivate a vesting schedule (pause vesting without removing)
+     * @notice Deactivate a vesting schedule by index.
+     * @dev Pauses vesting accrual without deleting data.
      */
-    function deactivateVestingSchedule(address user) external onlyOwner {
-        (bool has, uint256 idx) = _latestScheduleIndex(user);
-        require(has, 'No active vesting schedule');
-        VestingSchedule storage schedule = userVestingSchedules[user][idx];
+    function deactivateVestingSchedule(address user, uint256 index) external onlyOwner nonReentrant {
+        require(index < userVestingSchedules[user].length, 'Invalid schedule index');
+        VestingSchedule storage schedule = userVestingSchedules[user][index];
         require(schedule.isActive, 'No active vesting schedule');
         schedule.isActive = false;
-        _syncLatestMapping(user);
-
+        // mapping unchanged; latest is derived from array on reads
         emit VestingScheduleDeactivated(user, block.timestamp);
     }
 
     /**
-     * @dev Reactivate a deactivated vesting schedule
+     * @notice Reactivate a previously deactivated vesting schedule by index.
+     * @dev Requires the user still has enough transferable balance to cover remaining locked tokens.
      */
-    function reactivateVestingSchedule(address user) external onlyOwner {
-        (bool has, uint256 idx) = _latestScheduleIndex(user);
-        require(has, 'No vesting schedule exists');
-        VestingSchedule storage schedule = userVestingSchedules[user][idx];
+    function reactivateVestingSchedule(address user, uint256 index) external onlyOwner nonReentrant {
+        require(index < userVestingSchedules[user].length, 'Invalid schedule index');
+        VestingSchedule storage schedule = userVestingSchedules[user][index];
         require(!schedule.isCancelled, 'Vesting schedule cancelled');
         require(!schedule.isActive, 'Vesting schedule is already active');
         require(schedule.startTime != 0, 'No vesting schedule exists');
 
-        // Ensure the user still holds enough tokens to cover the remaining locked amount
         uint256 recomputedVested = _vestedAmountAt(schedule, block.timestamp);
         uint256 floorUnlocked = schedule.unlockedAmount > recomputedVested ? schedule.unlockedAmount : recomputedVested;
         uint256 remainingLocked = schedule.totalAmount > floorUnlocked ? (schedule.totalAmount - floorUnlocked) : 0;
-        require(super.balanceOf(user) >= remainingLocked, 'Insufficient balance to reactivate');
+        require(transferableBalance(user) >= remainingLocked, 'Insufficient balance to reactivate');
 
         schedule.isActive = true;
-        _syncLatestMapping(user);
-
+        // mapping unchanged; latest is derived from array on reads
         emit VestingScheduleReactivated(user, block.timestamp);
     }
 
     /**
-     * @dev Cancel a vesting schedule completely (emergency function)
-     * This will stop all future vesting and mark the schedule as inactive
+     * @notice Cancel a vesting schedule by index.
+     * @dev Permanently disables the schedule and zeroes its time fields; reduces totalAllocated by remaining locked.
      */
-    function cancelVestingSchedule(address user) external onlyOwner {
-        (bool has, uint256 idx) = _latestScheduleIndex(user);
-        require(has, 'No active vesting schedule');
-        VestingSchedule storage schedule = userVestingSchedules[user][idx];
+    function cancelVestingSchedule(address user, uint256 index) external onlyOwner nonReentrant {
+        require(index < userVestingSchedules[user].length, 'Invalid schedule index');
+        VestingSchedule storage schedule = userVestingSchedules[user][index];
         require(schedule.isActive, 'No active vesting schedule');
 
-        // Compute locked for this schedule only
         uint256 currentTime = block.timestamp;
         uint256 vestedForSchedule = _vestedAmountAt(schedule, currentTime);
         uint256 maxUnlocked = vestedForSchedule > schedule.unlockedAmount ? vestedForSchedule : schedule.unlockedAmount;
         uint256 lockedAmount = schedule.totalAmount > maxUnlocked ? (schedule.totalAmount - maxUnlocked) : 0;
 
-        // Mark as inactive and permanently cancelled
         schedule.isActive = false;
         schedule.isCancelled = true;
         schedule.startTime = 0;
         schedule.endTime = 0;
 
-        // Reduce total allocated by the locked amount
         totalAllocated -= lockedAmount;
-        _syncLatestMapping(user);
-
+        // mapping unchanged; latest is derived from array on reads
         emit VestingScheduleCancelled(user, lockedAmount, block.timestamp);
     }
 
     /**
-     * @dev Toggle airdrop status for a user
+     * @notice Toggle the `isAirdrop` flag for a schedule by index.
      */
-    function toggleAirdropStatus(address user) external onlyOwner {
-        (bool has, uint256 idx) = _latestScheduleIndex(user);
-        require(has, 'No active vesting schedule');
-        VestingSchedule storage schedule = userVestingSchedules[user][idx];
+    function toggleAirdropStatus(address user, uint256 index) external onlyOwner nonReentrant {
+        require(index < userVestingSchedules[user].length, 'Invalid schedule index');
+        VestingSchedule storage schedule = userVestingSchedules[user][index];
         require(schedule.isActive, 'No active vesting schedule');
         schedule.isAirdrop = !schedule.isAirdrop;
-        _syncLatestMapping(user);
-
+        // mapping unchanged; latest is derived from array on reads
         emit AirdropStatusToggled(user, schedule.isAirdrop, block.timestamp);
     }
 
+    // old modifyVestingSchedule(address,uint256) removed in favor of index-based variant
+
     /**
-     * @dev Update unlocked amounts for all participants (gas expensive)
+     * @notice Update unlocked amounts for all participants.
+     * @dev Iterates through all participants and updates their unlocked amounts.
      */
     function updateUnlockedAmounts() external onlyOwner {
         uint256 participantsLength = participants.length;
@@ -697,7 +687,8 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
     }
 
     /**
-     * @dev Update unlocked amounts for a specific user (gas efficient)
+     * @notice Update unlocked amounts for a specific user.
+     * @dev Iterates schedules and updates `unlockedAmount` based on current timestamp; emits events on changes.
      */
     function updateUnlockedAmountsForUser(address user) public {
         VestingSchedule[] storage schedules = userVestingSchedules[user];
@@ -741,12 +732,11 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
                 emit VestingScheduleCompleted(user, schedule.totalAmount, block.timestamp);
             }
         }
-        _syncLatestMapping(user);
+        // mapping unchanged; latest is derived from array on reads
     }
 
     /**
-     * @dev Get vested amount for a user based on precise tokenomics schedule
-     * Aggregates across all schedules
+     * @notice Get the total vested amount across all active schedules for a user at the current time.
      */
     function getVestedAmount(address user) public view returns (uint256) {
         VestingSchedule[] storage schedules = userVestingSchedules[user];
@@ -765,8 +755,7 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
     }
 
     /**
-     * @dev Get unlocked amount for a user
-     * Returns the stored unlocked amount across all schedules
+     * @notice Get the stored unlocked amount aggregated across all schedules for a user.
      */
     function getUnlockedAmount(address user) external view returns (uint256) {
         VestingSchedule[] storage schedules = userVestingSchedules[user];
@@ -778,7 +767,7 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
     }
 
     /**
-     * @dev Get locked amount for a user (sum across all active schedules)
+     * @notice Get the currently locked amount aggregated across all active schedules for a user.
      */
     function getLockedAmount(address user) public view returns (uint256) {
         VestingSchedule[] storage schedules = userVestingSchedules[user];
@@ -804,7 +793,8 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
     }
 
     /**
-     * @dev Get vesting schedule for a user
+     * @notice Get the latest vesting schedule (last created) for a user.
+     * @dev Returns zeroed fields when no schedules exist.
      */
     function getVestingSchedule(
         address user
@@ -820,7 +810,11 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
             bool isAirdrop
         )
     {
-        VestingSchedule storage schedule = vestingSchedules[user];
+        VestingSchedule[] storage schedules = userVestingSchedules[user];
+        if (schedules.length == 0) {
+            return (0, 0, 0, 0, false, false);
+        }
+        VestingSchedule storage schedule = schedules[schedules.length - 1];
         return (
             schedule.totalAmount,
             schedule.unlockedAmount,
@@ -1052,7 +1046,7 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
     }
 
     /**
-     * @dev Check vesting requirements for bulk operations (view function)
+     * @notice Pre-check for bulk vesting operations.
      * @param users Array of user addresses
      * @param amounts Array of token amounts
      * @return totalTokensNeeded Total tokens required for the operation
@@ -1085,7 +1079,7 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
     /**
      * @dev Withdraw MSVP tokens held by the contract (e.g., residual taxes)
      */
-    function withdrawContractTokens(address to, uint256 amount) external onlyOwner {
+    function withdrawContractTokens(address to, uint256 amount) external onlyOwner nonReentrant {
         require(to != address(0), 'Invalid address');
         require(amount > 0, 'Amount must be greater than zero');
         require(balanceOf(address(this)) >= amount, 'Insufficient contract balance');

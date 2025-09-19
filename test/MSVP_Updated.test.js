@@ -474,7 +474,7 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
             
             // Modify schedule to increase amount
             const newAmount = TEST_AMOUNT * BigInt(2);
-            await msvpToken.modifyVestingSchedule(user1.address, newAmount);
+            await msvpToken.modifyVestingSchedule(user1.address, 0, newAmount);
             
             // Update unlocked amounts again
             await msvpToken.updateUnlockedAmountsForUser(user1.address);
@@ -546,7 +546,7 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
             await time.increase(3 * MONTH_IN_SECONDS);
             const earlyReleaseAmount = ethers.parseEther("1000000000"); // 1B tokens
             
-            await msvpToken.earlyRelease(user1.address, earlyReleaseAmount);
+            await msvpToken.earlyRelease(user1.address, 0, earlyReleaseAmount);
             
             const unlocked = await msvpToken.getUnlockedAmount(user1.address);
             expect(unlocked).to.equal(earlyReleaseAmount);
@@ -554,7 +554,7 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
             // Verify we can't release more than remaining locked
             const remainingLocked = await msvpToken.getLockedAmount(user1.address);
             await expect(
-                msvpToken.earlyRelease(user1.address, remainingLocked + ethers.parseEther("1"))
+                msvpToken.earlyRelease(user1.address, 0, remainingLocked + ethers.parseEther("1"))
             ).to.be.revertedWith("Amount exceeds remaining locked tokens");
         });
 
@@ -640,7 +640,7 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
             expect(schedule.isActive).to.be.true;
             
             // Deactivate vesting
-            await expect(msvpToken.deactivateVestingSchedule(user1.address))
+            await expect(msvpToken.deactivateVestingSchedule(user1.address, 0))
                 .to.emit(msvpToken, "VestingScheduleDeactivated")
                 .withArgs(user1.address, anyValue);
             
@@ -650,11 +650,11 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
             
             // Try to use vesting functions (should fail)
             await expect(
-                msvpToken.earlyRelease(user1.address, ethers.parseEther("1000000000"))
+                msvpToken.earlyRelease(user1.address, 0, ethers.parseEther("1000000000"))
             ).to.be.revertedWith("No active vesting schedule");
             
             // Reactivate vesting
-            await expect(msvpToken.reactivateVestingSchedule(user1.address))
+            await expect(msvpToken.reactivateVestingSchedule(user1.address, 0))
                 .to.emit(msvpToken, "VestingScheduleReactivated")
                 .withArgs(user1.address, anyValue);
             
@@ -663,7 +663,7 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
             expect(schedule.isActive).to.be.true;
             
             // Should work again
-            await msvpToken.earlyRelease(user1.address, ethers.parseEther("1000000000"));
+            await msvpToken.earlyRelease(user1.address, 0, ethers.parseEther("1000000000"));
         });
 
         it("Should cancel vesting schedule completely", async function () {
@@ -675,7 +675,7 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
             expect(schedule.totalAmount).to.equal(TEST_AMOUNT);
             
             // Cancel vesting
-            await expect(msvpToken.cancelVestingSchedule(user1.address))
+            await expect(msvpToken.cancelVestingSchedule(user1.address, 0))
                 .to.emit(msvpToken, "VestingScheduleCancelled")
                 .withArgs(user1.address, TEST_AMOUNT, anyValue);
             
@@ -686,7 +686,7 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
             
             // Try to use vesting functions (should fail)
             await expect(
-                msvpToken.earlyRelease(user1.address, ethers.parseEther("1000000000"))
+                msvpToken.earlyRelease(user1.address, 0, ethers.parseEther("1000000000"))
             ).to.be.revertedWith("No active vesting schedule");
         });
 
@@ -698,7 +698,7 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
             expect(schedule.isAirdrop).to.be.true;
             
             // Toggle to false
-            await expect(msvpToken.toggleAirdropStatus(user1.address))
+            await expect(msvpToken.toggleAirdropStatus(user1.address, 0))
                 .to.emit(msvpToken, "AirdropStatusToggled")
                 .withArgs(user1.address, false, anyValue);
             
@@ -707,7 +707,7 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
             expect(schedule.isAirdrop).to.be.false;
             
             // Toggle back to true
-            await expect(msvpToken.toggleAirdropStatus(user1.address))
+            await expect(msvpToken.toggleAirdropStatus(user1.address, 0))
                 .to.emit(msvpToken, "AirdropStatusToggled")
                 .withArgs(user1.address, true, anyValue);
             
@@ -719,23 +719,23 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
         it("Should handle error cases for vesting management", async function () {
             // Try to deactivate non-existent schedule
             await expect(
-                msvpToken.deactivateVestingSchedule(user3.address)
-            ).to.be.revertedWith("No active vesting schedule");
+                msvpToken.deactivateVestingSchedule(user3.address, 0)
+            ).to.be.revertedWith("Invalid schedule index");
             
             // Try to reactivate non-existent schedule
             await expect(
-                msvpToken.reactivateVestingSchedule(user3.address)
-            ).to.be.revertedWith("No vesting schedule exists");
+                msvpToken.reactivateVestingSchedule(user3.address, 0)
+            ).to.be.revertedWith("Invalid schedule index");
             
             // Try to cancel non-existent schedule
             await expect(
-                msvpToken.cancelVestingSchedule(user3.address)
-            ).to.be.revertedWith("No active vesting schedule");
+                msvpToken.cancelVestingSchedule(user3.address, 0)
+            ).to.be.revertedWith("Invalid schedule index");
             
             // Try to toggle airdrop status for non-existent schedule
             await expect(
-                msvpToken.toggleAirdropStatus(user3.address)
-            ).to.be.revertedWith("No active vesting schedule");
+                msvpToken.toggleAirdropStatus(user3.address, 0)
+            ).to.be.revertedWith("Invalid schedule index");
         });
 
         it("Should automatically deactivate completed vesting schedules", async function () {
@@ -1525,14 +1525,14 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
                 expect(initialLocked).to.equal(testAmount);
 
                 // Deactivate vesting
-                await msvpToken.deactivateVestingSchedule(testUser.address);
+                await msvpToken.deactivateVestingSchedule(testUser.address, 0);
 
                 // Locked amount should be 0 when vesting is deactivated
                 const lockedAfterDeactivation = await msvpToken.getLockedAmount(testUser.address);
                 expect(lockedAfterDeactivation).to.equal(0);
 
                 // Reactivate vesting
-                await msvpToken.reactivateVestingSchedule(testUser.address);
+                await msvpToken.reactivateVestingSchedule(testUser.address, 0);
 
                 // Locked amount should be restored
                 const lockedAfterReactivation = await msvpToken.getLockedAmount(testUser.address);
@@ -1592,7 +1592,7 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
 
                 // Modify schedule to increase amount
                 const newAmount = testAmount * BigInt(2);
-                await msvpToken.modifyVestingSchedule(testUser.address, newAmount);
+                await msvpToken.modifyVestingSchedule(testUser.address, 0, newAmount);
 
                 // Locked amount should reflect the new amount
                 const lockedAfterModification = await msvpToken.getLockedAmount(testUser.address);
@@ -1791,12 +1791,12 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
             
             // Try to early release more than schedule 2's locked (which equals amount2 now)
             await expect(
-                msvpToken.earlyRelease(user1.address, amount2 + ethers.parseEther("1"))
+                msvpToken.earlyRelease(user1.address, 1, amount2 + ethers.parseEther("1"))
             ).to.be.revertedWith("Amount exceeds remaining locked tokens");
             
             // Early release a small amount from latest schedule
             const manualRelease = ethers.parseEther("10");
-            await msvpToken.earlyRelease(user1.address, manualRelease);
+            await msvpToken.earlyRelease(user1.address, 1, manualRelease);
             const unlockedAfterManual = await msvpToken.getUnlockedAmount(user1.address);
             const lockedAfterManual = await msvpToken.getLockedAmount(user1.address);
             const transferableAfterManual = await msvpToken.transferableBalance(user1.address);
@@ -1847,35 +1847,35 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
             const amount = TEST_AMOUNT;
             await msvpToken.createVestingSchedule(user1.address, amount);
             // Non-owner attempts
-            await expect(msvpToken.connect(user1).earlyRelease(user1.address, ethers.parseEther("1")))
+            await expect(msvpToken.connect(user1).earlyRelease(user1.address, 0, ethers.parseEther("1")))
                 .to.be.revertedWith("Ownable: caller is not the owner");
             await expect(msvpToken.connect(user1).emergencyUnlockAll(user1.address))
                 .to.be.revertedWith("Ownable: caller is not the owner");
-            await expect(msvpToken.connect(user1).deactivateVestingSchedule(user1.address))
+            await expect(msvpToken.connect(user1).deactivateVestingSchedule(user1.address, 0))
                 .to.be.revertedWith("Ownable: caller is not the owner");
-            await expect(msvpToken.connect(user1).reactivateVestingSchedule(user1.address))
+            await expect(msvpToken.connect(user1).reactivateVestingSchedule(user1.address, 0))
                 .to.be.revertedWith("Ownable: caller is not the owner");
-            await expect(msvpToken.connect(user1).cancelVestingSchedule(user1.address))
+            await expect(msvpToken.connect(user1).cancelVestingSchedule(user1.address, 0))
                 .to.be.revertedWith("Ownable: caller is not the owner");
-            await expect(msvpToken.connect(user1).toggleAirdropStatus(user1.address))
+            await expect(msvpToken.connect(user1).toggleAirdropStatus(user1.address, 0))
                 .to.be.revertedWith("Ownable: caller is not the owner");
         });
 
         it("Should revert management calls when no active schedule exists", async function () {
             // No schedules for user2
-            await expect(msvpToken.earlyRelease(user2.address, ethers.parseEther("1")))
-                .to.be.revertedWith("No active vesting schedule");
+            await expect(msvpToken.earlyRelease(user2.address, 0, ethers.parseEther("1")))
+                .to.be.revertedWith("Invalid schedule index");
             await expect(msvpToken.emergencyUnlockAll(user2.address))
                 .to.be.revertedWith("No active vesting schedule");
-            await expect(msvpToken.deactivateVestingSchedule(user2.address))
-                .to.be.revertedWith("No active vesting schedule");
-            await expect(msvpToken.cancelVestingSchedule(user2.address))
-                .to.be.revertedWith("No active vesting schedule");
-            await expect(msvpToken.toggleAirdropStatus(user2.address))
-                .to.be.revertedWith("No active vesting schedule");
+            await expect(msvpToken.deactivateVestingSchedule(user2.address, 0))
+                .to.be.revertedWith("Invalid schedule index");
+            await expect(msvpToken.cancelVestingSchedule(user2.address, 0))
+                .to.be.revertedWith("Invalid schedule index");
+            await expect(msvpToken.toggleAirdropStatus(user2.address, 0))
+                .to.be.revertedWith("Invalid schedule index");
             // Reactivate has distinct message for nonexistent schedule
-            await expect(msvpToken.reactivateVestingSchedule(user2.address))
-                .to.be.revertedWith("No vesting schedule exists");
+            await expect(msvpToken.reactivateVestingSchedule(user2.address, 0))
+                .to.be.revertedWith("Invalid schedule index");
         });
 
         it("Should enforce pause on transfers and schedule creation", async function () {
@@ -1910,14 +1910,14 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
             // Owner creates schedule for user1
             await msvpToken.createVestingSchedule(user1.address, amount);
             // Non-creator (user1) cannot modify
-            await expect(msvpToken.connect(user1).modifyVestingSchedule(user1.address, amount + BigInt(1)))
+            await expect(msvpToken.connect(user1).modifyVestingSchedule(user1.address, 0, amount + BigInt(1)))
                 .to.be.revertedWith("Only schedule creator");
 
             // Creator increases amount and tokens should be transferred from creator (owner) to user1
             const ownerBalBefore = await msvpToken.balanceOf((await ethers.getSigners())[0].address);
             const user1BalBefore = await msvpToken.balanceOf(user1.address);
             const newAmount = amount + ethers.parseEther("100");
-            await expect(msvpToken.modifyVestingSchedule(user1.address, newAmount)).to.emit(msvpToken, "TokensTransferredForVesting");
+            await expect(msvpToken.modifyVestingSchedule(user1.address, 0, newAmount)).to.emit(msvpToken, "TokensTransferredForVesting");
             const ownerBalAfter = await msvpToken.balanceOf((await ethers.getSigners())[0].address);
             const user1BalAfter = await msvpToken.balanceOf(user1.address);
             expect(ownerBalBefore - ownerBalAfter).to.equal(ethers.parseEther("100"));
@@ -1937,7 +1937,7 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
             await msvpToken.connect(creator).createVestingSchedule(userA.address, amount);
             // Try to bump by more than creator balance
             const tooHigh = amount + seed + ethers.parseEther("1");
-            await expect(msvpToken.connect(creator).modifyVestingSchedule(userA.address, tooHigh))
+            await expect(msvpToken.connect(creator).modifyVestingSchedule(userA.address, 0, tooHigh))
                 .to.be.revertedWith("Insufficient tokens for increase");
         });
 
@@ -1949,7 +1949,7 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
             await msvpToken.updateUnlockedAmountsForUser(user1.address);
             const unlocked = await msvpToken.getUnlockedAmount(user1.address);
             const lower = unlocked; // decrease to exactly unlocked
-            await expect(msvpToken.modifyVestingSchedule(user1.address, lower)).to.emit(msvpToken, "VestingScheduleModified");
+            await expect(msvpToken.modifyVestingSchedule(user1.address, 0, lower)).to.emit(msvpToken, "VestingScheduleModified");
             // No transfer on decrease
             const locked = await msvpToken.getLockedAmount(user1.address);
             expect(locked).to.equal(0); // since total == unlocked now
