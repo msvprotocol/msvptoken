@@ -1955,6 +1955,85 @@ describe("MSVP - Updated Tokenomics Schedule Testing", function () {
             expect(locked).to.equal(0); // since total == unlocked now
         });
     });
+
+    describe("Index-based vesting management functions", function () {
+        it("Should revert on invalid indices across all index-based admin functions", async function () {
+            const amount = ethers.parseEther("1000");
+            await msvpToken.createVestingSchedule(user1.address, amount);
+
+            await expect(msvpToken.earlyRelease(user1.address, 9, ethers.parseEther("1"))).to.be.revertedWith(
+                "Invalid schedule index"
+            );
+            await expect(msvpToken.deactivateVestingSchedule(user1.address, 9)).to.be.revertedWith(
+                "Invalid schedule index"
+            );
+            await expect(msvpToken.reactivateVestingSchedule(user1.address, 9)).to.be.revertedWith(
+                "Invalid schedule index"
+            );
+            await expect(msvpToken.cancelVestingSchedule(user1.address, 9)).to.be.revertedWith(
+                "Invalid schedule index"
+            );
+            await expect(msvpToken.toggleAirdropStatus(user1.address, 9)).to.be.revertedWith(
+                "Invalid schedule index"
+            );
+            await expect(msvpToken.modifyVestingSchedule(user1.address, 9, amount)).to.be.revertedWith(
+                "Invalid schedule index"
+            );
+        });
+
+        it("Should revert earlyRelease when amount is zero", async function () {
+            const amount = ethers.parseEther("500");
+            await msvpToken.createVestingSchedule(user2.address, amount);
+            await expect(msvpToken.earlyRelease(user2.address, 0, 0n)).to.be.revertedWith(
+                "Amount must be greater than zero"
+            );
+        });
+
+        it("Should revert reactivate when user lacks sufficient transferable balance", async function () {
+            const amount = ethers.parseEther("1000");
+            await msvpToken.createVestingSchedule(user3.address, amount);
+            // Deactivate schedule to free balance for transfers
+            await msvpToken.deactivateVestingSchedule(user3.address, 0);
+            // user3 transfers out nearly all tokens to owner
+            const bal = await msvpToken.balanceOf(user3.address);
+            await msvpToken.connect(user3).transfer((await ethers.getSigners())[0].address, bal);
+            // Reactivation should fail due to insufficient balance to cover locked amount
+            await expect(msvpToken.reactivateVestingSchedule(user3.address, 0)).to.be.revertedWith(
+                "Insufficient balance to reactivate"
+            );
+        });
+
+        it("getVestingSchedule should return the latest (last created) schedule", async function () {
+            const a1 = ethers.parseEther("1000");
+            const a2 = ethers.parseEther("2000");
+            await msvpToken.createVestingSchedule(user4.address, a1);
+            await msvpToken.createVestingSchedule(user4.address, a2);
+            // Operate on index 0 but latest should remain index 1
+            await msvpToken.deactivateVestingSchedule(user4.address, 0);
+            const schedule = await msvpToken.getVestingSchedule(user4.address);
+            expect(schedule.totalAmount).to.equal(a2);
+            expect(schedule.isActive).to.equal(true);
+        });
+        it("Should allow modifying a specific older schedule via modifyVestingSchedule", async function () {
+            // Create two schedules for user1
+            const amount1 = ethers.parseEther("1000");
+            const amount2 = ethers.parseEther("2000");
+            await msvpToken.createVestingSchedule(user1.address, amount1);
+            await msvpToken.createVestingSchedule(user1.address, amount2);
+
+            // Deactivate last schedule to simulate the problem scenario
+            await msvpToken.deactivateVestingSchedule(user1.address, 1);
+
+            // Increase the first schedule (index 0) by 500
+            const newAmountForFirst = amount1 + ethers.parseEther("500");
+            // The creator is owner in tests; ensure owner has enough and is creator
+            await msvpToken.modifyVestingSchedule(user1.address, 0, newAmountForFirst);
+
+            // After deactivating the last schedule, total active allocation should reflect only the first schedule
+            const totalAlloc = await msvpToken.getVestingAllocation(user1.address);
+            expect(totalAlloc).to.equal(newAmountForFirst);
+        });
+    });
 });
 
 // Helper function for event matching
