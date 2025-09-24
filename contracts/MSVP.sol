@@ -180,14 +180,6 @@ contract MSVP is ERC20, Ownable2Step, ReentrancyGuard, Pausable, AccessControl {
     }
 
     /**
-     * @dev Get all addresses with subadmin role (stub for compatibility)
-     */
-    function getSubadmins() external pure returns (address[] memory) {
-        address[] memory subadmins = new address[](0);
-        return subadmins;
-    }
-
-    /**
      * @dev Override balanceOf to show actual token balance
      * This shows the real tokens held in the wallet (including received tokens)
      */
